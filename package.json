@@ -1,0 +1,34 @@
+{
+  "name": "knex-schema-builder",
+  "version": "0.1.0",
+  "description": "A schema builder module for knex, handles schema initialization and migration",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danielgindi/knex-schema-builder"
+  },
+  "keywords": [
+    "knex",
+    "schema",
+    "database",
+    "install",
+    "migrate",
+    "mysql",
+    "postgres",
+    "sqlite",
+    "sqlite3"
+  ],
+  "author": "Daniel Cohen Gindi <danielgindi@gmail.com> (https://github.com/danielgindi)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/danielgindi/knex-schema-builder/issues"
+  },
+  "homepage": "https://github.com/danielgindi/knex-schema-builder",
+  "dependencies": {
+    "async": "0.9.*",
+    "strip-json-comments": "1.*"
+  }
+}
