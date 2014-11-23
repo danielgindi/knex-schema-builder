@@ -504,7 +504,7 @@ var ensureSchemaGlobalsExist = function (db, callback) {
         } else {
             db.schema.createTable('schema_globals', function(table){
                 table.string('key', 64).notNullable();
-                table.string('value', 255);
+                table.string('value', 64);
             }).then(function(){
                 callback();
             }).catch(function(err){
