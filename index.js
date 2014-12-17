@@ -235,7 +235,7 @@ var install = function (db, schemaPath, callback) {
     async.waterfall(
         [
             function (callback) {
-                jsonReader.readJsonFile(path.join(schemaPath, 'schema.json'), true, function (err, data) {
+                readJsonFile(path.join(schemaPath, 'schema.json'), true, function (err, data) {
                     callback(err, data);
                 });
             },
@@ -296,7 +296,7 @@ var upgrade = function (db, schemaPath, callback) {
     async.waterfall(
         [
             function (callback) {
-                jsonReader.readJsonFile(path.join(schemaPath, 'schema.json'), true, function (err, data) {
+                readJsonFile(path.join(schemaPath, 'schema.json'), true, function (err, data) {
                     callback(err, data);
                 });
             },
@@ -327,7 +327,7 @@ var upgrade = function (db, schemaPath, callback) {
                         async.waterfall(
                             [
                                 function (callback) {
-                                    jsonReader.readJsonFile(path.join(schemaPath, 'upgrade.' + (currentVersion + 1) + '.json'), true, function (err, data) {
+                                    readJsonFile(path.join(schemaPath, 'upgrade.' + (currentVersion + 1) + '.json'), true, function (err, data) {
                                         callback(err, data);
                                     });
                                 },
@@ -504,7 +504,7 @@ var ensureSchemaGlobalsExist = function (db, callback) {
         } else {
             db.schema.createTable('schema_globals', function(table){
                 table.string('key', 64).notNullable();
-                table.string('value', 64);
+                table.string('value', 255);
             }).then(function(){
                 callback();
             }).catch(function(err){
@@ -570,7 +570,7 @@ var setCurrentDbVersion = function (db, version, callback) {
  */
 var getLatestDbVersion = function (schemaPath, callback) {
 
-    jsonReader.readJsonFile(path.join(schemaPath, 'version.json'), true, function (err, data) {
+    readJsonFile(path.join(schemaPath, 'version.json'), true, function (err, data) {
         callback(err, data ? data["version"] : null);
     });
 
