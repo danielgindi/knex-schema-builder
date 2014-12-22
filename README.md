@@ -1,6 +1,8 @@
 knex-schema-builder
 ===================
 
+[![npm Version](https://badge.fury.io/js/knex-schema-builder.png)](https://npmjs.org/package/knex-schema-builder)
+
 I built this little helper so I can have a way of easily describing a database schema and automate the process of database initialization for an installation of a project - or migration of the database to newer versions.
 It works on top of *knex*, and most functions require passing a *knex* instance.
 
