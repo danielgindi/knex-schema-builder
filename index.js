@@ -254,18 +254,30 @@ var install = function (db, schemaPath, callback) {
             },
             function (schema, callback) {
 
+                var currentTableName;
+
                 async.eachSeries(Object.keys(schema), function (tableName, callback) {
+                    currentTableName = tableName;
                     createTableIndexes(db, tableName, schema[tableName], callback);
                 }, function (err) {
+                    if (err) {
+                        err = 'Failed to create indexes for table ' + currentTableName + '\n' + err.toString();
+                    }
                     callback(err, schema);
                 });
 
             },
             function (schema, callback) {
 
+                var currentTableName;
+
                 async.eachSeries(Object.keys(schema), function (tableName, callback) {
+                    currentTableName = tableName;
                     createTableForeignKeys(db, tableName, schema[tableName], callback);
                 }, function (err) {
+                    if (err) {
+                        err = 'Failed to create foreign keys for table ' + currentTableName + '\n' + err.toString();
+                    }
                     callback(err, schema);
                 });
 
