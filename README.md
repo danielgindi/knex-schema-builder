@@ -89,7 +89,7 @@ The schema is an array of actions, each action has the key `action` set, and its
 * `dropIndex (table, name)`: Drops the index named `name` in table named `table`
 * `dropForeign (table, column)`: Drops the foreign key on the specified column/columns (`column` can be an array or a single string) on table named `table`
 * `dropForeign (table, name)`: Drops the foreign key named `name` in table named `table`
-* `dropUnique (table, column)`: Drops the unique constraint the specified column (`column`) in table named `table`
+* `dropUnique (table, column)`: Drops the unique constraint the specified column/columns (`column` can be an array or a single string) in table named `table`
 * `dropUnique (table, name)`: Drops the unique constraint named `name` in table named `table`
 * `addTimestamps (table)`: Adds the timestamps (*created_at* and *updated_at*) in the table named `table`
 * `dropTimestamps (table)`: Drops the timestamps (*created_at* and *updated_at*) in the table named `table`
@@ -118,7 +118,8 @@ The schema is an array of actions, each action has the key `action` set, and its
         "indexes": [
           {
             "name": "<INDEX_NAME>",
-            "columns": "<COLUMN_NAME>" or ["<COLUMN_NAME>".. ]
+            "columns": "<COLUMN_NAME>" or ["<COLUMN_NAME>".. ],
+            "unique": true/false
           }
         ],
         "foreign_keys": [

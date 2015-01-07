@@ -186,7 +186,11 @@ var createTableIndexes = function (db, tableName, tableData, callback) {
 
             var columns = index['columns'];
             columns = (columns && !(columns instanceof Array)) ? [columns] : columns;
-            table.index(columns, index['name']);
+            if (index['unique']) {
+                table.unique(columns, index['name']);
+            } else {
+                table.index(columns, index['name']);
+            }
 
         });
 
