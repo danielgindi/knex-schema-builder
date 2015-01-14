@@ -28,7 +28,9 @@ var knex = require('knex'),
 // In order to initialize a fresh db
 schemaInstaller.install(db, schemaPath, function (err) { ... });
 
-// In order to upgrade a db... We can call "upgrade" directly, or we can tell the user that an upgrade is needed and that he should authorize the upgrade process.
+// In order to upgrade a db... We can call "upgrade" directly, 
+//   or we can tell the user that an upgrade is needed and that 
+//   he should authorize the upgrade process.
 schemaInstaller.isUpgradeNeeded(db, schemaPath, function (err, required) {
 
   if (err) {
@@ -43,7 +45,8 @@ schemaInstaller.isUpgradeNeeded(db, schemaPath, function (err, required) {
 
         if (err) {
           // An error occurred...
-          // Please take care of the problem manually, then try to run the upgrade routine again.
+          // Please take care of the problem manually, 
+          // and then try to run the upgrade routine again.
         } else {
           // Your database has been upgraded successfully!
         }
@@ -160,7 +163,7 @@ The schema is an array of actions, each action has the key `action` set, and its
 * `enum` (Use with `enum_values`)
 * `json` / `jsonb`
 * `uuid`
-* `:<OTHER_TYPE>` will use a db-specific type that is now in the predefined list above
+* `:<OTHER_TYPE>` will use a db-specific type that is not in the predefined list above
 
 #### *LENGTH*:
 Specifies the length of a `string` column. Defaults to 255.
