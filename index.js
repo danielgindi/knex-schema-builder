@@ -562,7 +562,7 @@ var setCurrentDbVersion = function (db, version, callback) {
     ensureSchemaGlobalsExist(db, function(err) {
         if (err) return callback(err);
 
-        db.insert({'value': version, 'key': 'dv_version'}).into('globals').then(function(){
+        db.insert({'value': version, 'key': 'dv_version'}).into('schema_globals').then(function(){
 
             callback();
 
