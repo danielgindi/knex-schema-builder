@@ -183,19 +183,39 @@ var createTableIndexes = function (db, tableName, tableData, callback) {
     db.schema.table(tableName, function(table) {
 
         (tableData['indexes'] || []).forEach(function (index) {
-
-            var columns = index['columns'];
-            columns = (columns && !(columns instanceof Array)) ? [columns] : columns;
-            if (index['unique']) {
-                table.unique(columns, index['name']);
-            } else {
-                table.index(columns, index['name']);
-            }
-
+            createIndex_inner(table, index);
         });
 
     }).exec(callback);
 
+};
+
+/**
+ * Manually create an index
+ * @param {Object} db A knex instance
+ * @param {String} tableName The name of the table to create
+ * @param {TableIndexDescription} indexData The index data
+ * @param {function(error:?)} callback
+ */
+var createIndex = function (db, tableName, indexData, callback) {
+    db.schema.table(tableName, function(table) {
+        createIndex_inner(table, indexData);
+    }).exec(callback);
+};
+
+/**
+ * Inner implementation for index creation
+ * @param {Object} table A knex table closure
+ * @param {TableIndexDescription} indexData The index data
+ */
+var createIndex_inner = function (table, indexData) {
+    var columns = indexData['columns'];
+    columns = (columns && !(columns instanceof Array)) ? [columns] : columns;
+    if (indexData['unique']) {
+        table.unique(columns, indexData['name']);
+    } else {
+        table.index(columns, indexData['name']);
+    }
 };
 
 /**
@@ -400,6 +420,9 @@ var upgrade = function (db, schemaPath, callback) {
                                                 db.schema.table(action['table'], function(table){
                                                     table.renameColumn(action['from'], action['to']);
                                                 }).exec(callback);
+                                                break;
+                                            case 'createIndex':
+                                                createIndex(db, action['table'], action, callback);
                                                 break;
                                             case 'dropColumn':
                                                 db.schema.table(action['table'], function(table){
@@ -652,5 +675,6 @@ module.exports = {
     createColumn: createColumn,
     createTable: createTable,
     createTableIndexes: createTableIndexes,
-    createTableForeignKeys: createTableForeignKeys
+    createTableForeignKeys: createTableForeignKeys,
+    createIndex: createIndex
 };

@@ -85,6 +85,7 @@ The schema is an array of actions, each action has the key `action` set, and its
 * `createTableForeignKeys (table)`: Creates the foreign keys for table named `table`
 * `addColumn (table, column)`: Creates the specified column (`column`) in table named `table`
 * `renameColumn (table, from, to)`: Renames the `from` column to `to` in table named `table`
+* `createIndex (table, name, columns, unique)`: Creates an index on the specified `table`, using the same syntax as in the schema file
 * `dropColumn (table, column)`: Drops the specified column (`column`) in table named `table`
 * `dropTable (table)`: Drops the table named `table`
 * `dropPrimary (table)`: Drops the primary key in the table named `table`
