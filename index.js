@@ -656,11 +656,9 @@ var isUpgradeNeeded = function (db, schemaPath, callback) {
             }
         ],
         function (err, versions) {
-            if (err) {
-                callback(err);
-            } else {
-                return versions[0] < versions[1];
-            }
+            if (err) return callback(err);
+
+            callback(false, versions[0] < versions[1]);
         }
     );
 
@@ -675,11 +673,9 @@ var isUpgradeNeeded = function (db, schemaPath, callback) {
 var isInstallNeeded = function (db, schemaPath, callback) {
 
     getCurrentDbVersion(db, function (err, version) {
-            if (err) {
-                callback(err);
-            } else {
-                return version == null;
-            }
+            if (err) return callback(err);
+
+            callback(false, version == null);
         }
     );
 
