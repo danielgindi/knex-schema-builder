@@ -230,22 +230,43 @@ var createTableForeignKeys = function (db, tableName, tableData, callback) {
     db.schema.table(tableName, function(table) {
 
         (tableData['foreign_keys'] || []).forEach(function (foreignKeyData) {
-
-            var columns = foreignKeyData['columns'],
-                foreigns = foreignKeyData['foreign_columns'];
-            columns = (columns && !(columns instanceof Array)) ? [columns] : columns;
-            foreigns = (foreigns && !(foreigns instanceof Array)) ? [foreigns] : foreigns;
-            var foreign = table.foreign(columns).references(foreigns).inTable(foreignKeyData['foreign_table']);
-            if (foreignKeyData['on_update']) {
-                foreign.onUpdate(foreignKeyData['on_update']);
-            }
-            if (foreignKeyData['on_delete']) {
-                foreign.onDelete(foreignKeyData['on_delete']);
-            }
+            createForeign_inner(table, foreignKeyData);
         });
 
     }).exec(callback);
 
+};
+
+/**
+ * Manually create an foreign key
+ * @param {Object} db A knex instance
+ * @param {String} tableName The name of the table to create
+ * @param {TableForeignKeyDescription} foreignKey The foreign key data
+ * @param {function(error:?)} callback
+ */
+var createForeign = function (db, tableName, foreignKey, callback) {
+    db.schema.table(tableName, function(table) {
+        createForeign_inner(table, foreignKey);
+    }).exec(callback);
+};
+
+/**
+ * Inner implementation for foreign key creation
+ * @param {Object} table A knex table closure
+ * @param {TableForeignKeyDescription} foreignKey The foreign key data
+ */
+var createForeign_inner = function (table, foreignKey) {
+    var columns = foreignKey['columns'],
+        foreigns = foreignKey['foreign_columns'];
+    columns = (columns && !(columns instanceof Array)) ? [columns] : columns;
+    foreigns = (foreigns && !(foreigns instanceof Array)) ? [foreigns] : foreigns;
+    var foreign = table.foreign(columns).references(foreigns).inTable(foreignKey['foreign_table']);
+    if (foreignKey['on_update']) {
+        foreign.onUpdate(foreignKey['on_update']);
+    }
+    if (foreignKey['on_delete']) {
+        foreign.onDelete(foreignKey['on_delete']);
+    }
 };
 
 /**
@@ -423,6 +444,9 @@ var upgrade = function (db, schemaPath, callback) {
                                                 break;
                                             case 'createIndex':
                                                 createIndex(db, action['table'], action, callback);
+                                                break;
+                                            case 'createForeign':
+                                                createForeign(db, action['table'], action, callback);
                                                 break;
                                             case 'dropColumn':
                                                 db.schema.table(action['table'], function(table){
