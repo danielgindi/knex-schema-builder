@@ -566,7 +566,7 @@ var ensureSchemaGlobalsExist = function (db, callback) {
             callback();
         } else {
             db.schema.createTable('schema_globals', function(table){
-                table.string('key', 64).notNullable();
+                table.string('key', 64).notNullable().primary();;
                 table.string('value', 255);
             }).then(function(){
                 callback();
@@ -591,7 +591,7 @@ var getCurrentDbVersion = function (db, callback) {
     ensureSchemaGlobalsExist(db, function(err) {
         if (err) return callback(err);
 
-        db.select('value').from('schema_globals').where('key', 'dv_version').limit(1).exec(function(err, rows){
+        db.select('value').from('schema_globals').where('key', 'db_version').limit(1).exec(function(err, rows){
             callback(err, (rows && rows.length) ? rows[0]['value'] : null);
         });
     });
@@ -609,13 +609,13 @@ var setCurrentDbVersion = function (db, version, callback) {
     ensureSchemaGlobalsExist(db, function(err) {
         if (err) return callback(err);
 
-        db.insert({'value': version, 'key': 'dv_version'}).into('schema_globals').then(function(){
+        db.insert({'value': version, 'key': 'db_version'}).into('schema_globals').then(function(){
 
             callback();
 
         }).catch(function(){
 
-            db.table('schema_globals').update('value', version).where('key', 'dv_version').then(function(){
+            db.table('schema_globals').update('value', version).where('key', 'db_version').then(function(){
                 callback();
             }).catch(function(error){
                 callback(error);
