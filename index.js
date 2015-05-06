@@ -167,7 +167,7 @@ var createTable = function (db, tableName, tableData, callback) {
         }
     });
 
-    table.exec(callback);
+    table.nodeify(callback);
 
 };
 
@@ -186,7 +186,7 @@ var createTableIndexes = function (db, tableName, tableData, callback) {
             createIndex_inner(table, index);
         });
 
-    }).exec(callback);
+    }).nodeify(callback);
 
 };
 
@@ -200,7 +200,7 @@ var createTableIndexes = function (db, tableName, tableData, callback) {
 var createIndex = function (db, tableName, indexData, callback) {
     db.schema.table(tableName, function(table) {
         createIndex_inner(table, indexData);
-    }).exec(callback);
+    }).nodeify(callback);
 };
 
 /**
@@ -233,7 +233,7 @@ var createTableForeignKeys = function (db, tableName, tableData, callback) {
             createForeign_inner(table, foreignKeyData);
         });
 
-    }).exec(callback);
+    }).nodeify(callback);
 
 };
 
@@ -247,7 +247,7 @@ var createTableForeignKeys = function (db, tableName, tableData, callback) {
 var createForeign = function (db, tableName, foreignKey, callback) {
     db.schema.table(tableName, function(table) {
         createForeign_inner(table, foreignKey);
-    }).exec(callback);
+    }).nodeify(callback);
 };
 
 /**
@@ -305,7 +305,7 @@ var install = function (db, schemaPath, callback) {
                             }
 
                             if (rawQuery && typeof(rawQuery) === 'string') {
-                                db.raw(rawQuery).exec(callback);
+                                db.raw(rawQuery).nodeify(callback);
                             } else {
                                 callback(); // Skip
                             }
@@ -466,7 +466,7 @@ var upgrade = function (db, schemaPath, callback) {
                                                     if (column) {
                                                         db.schema.table(action['table'], function(table){
                                                             createColumn(table, column);
-                                                        }).exec(callback);
+                                                        }).nodeify(callback);
                                                     } else {
                                                         console.log('Unknown column named `' + action['column'] + '`. Failing...');
                                                         callback('unknown-column');
@@ -479,7 +479,7 @@ var upgrade = function (db, schemaPath, callback) {
                                             case 'renameColumn':
                                                 db.schema.table(action['table'], function(table){
                                                     table.renameColumn(action['from'], action['to']);
-                                                }).exec(callback);
+                                                }).nodeify(callback);
                                                 break;
                                             case 'createIndex':
                                                 createIndex(db, action['table'], action, callback);
@@ -490,15 +490,15 @@ var upgrade = function (db, schemaPath, callback) {
                                             case 'dropColumn':
                                                 db.schema.table(action['table'], function(table){
                                                     table.dropColumn(action['column']);
-                                                }).exec(callback);
+                                                }).nodeify(callback);
                                                 break;
                                             case 'dropTable':
-                                                db.schema.dropTableIfExists(action['table']).exec(callback);
+                                                db.schema.dropTableIfExists(action['table']).nodeify(callback);
                                                 break;
                                             case 'dropPrimary':
                                                 db.schema.table(action['table'], function(table){
                                                     table.dropPrimary();
-                                                }).exec(callback);
+                                                }).nodeify(callback);
                                                 break;
                                             case 'dropIndex':
                                                 db.schema.table(action['table'], function(table){
@@ -509,7 +509,7 @@ var upgrade = function (db, schemaPath, callback) {
                                                         table.dropIndex(action['column']);
                                                     }
 
-                                                }).exec(callback);
+                                                }).nodeify(callback);
                                                 break;
                                             case 'dropForeign':
                                                 db.schema.table(action['table'], function(table){
@@ -520,7 +520,7 @@ var upgrade = function (db, schemaPath, callback) {
                                                         table.dropForeign(action['column']);
                                                     }
 
-                                                }).exec(callback);
+                                                }).nodeify(callback);
                                                 break;
                                             case 'dropUnique':
                                                 db.schema.table(action['table'], function(table){
@@ -531,17 +531,17 @@ var upgrade = function (db, schemaPath, callback) {
                                                         table.dropUnique(action['column']);
                                                     }
 
-                                                }).exec(callback);
+                                                }).nodeify(callback);
                                                 break;
                                             case 'addTimestamps':
                                                 db.schema.table(action['table'], function(table){
                                                     table.timestamps();
-                                                }).exec(callback);
+                                                }).nodeify(callback);
                                                 break;
                                             case 'dropTimestamps':
                                                 db.schema.table(action['table'], function(table){
                                                     table.dropTimestamps();
-                                                }).exec(callback);
+                                                }).nodeify(callback);
                                                 break;
                                             default:
                                                 console.log('Unknown upgrade action `' + action['action'] + '`. Failing...');
@@ -630,7 +630,7 @@ var getCurrentDbVersion = function (db, callback) {
     ensureSchemaGlobalsExist(db, function(err) {
         if (err) return callback(err);
 
-        db.select('value').from('schema_globals').where('key', 'db_version').limit(1).exec(function(err, rows){
+        db.select('value').from('schema_globals').where('key', 'db_version').limit(1).nodeify(function(err, rows){
             callback(err, (rows && rows.length) ? rows[0]['value'] : null);
         });
     });
