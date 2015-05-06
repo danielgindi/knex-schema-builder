@@ -434,7 +434,7 @@ var upgrade = function (db, schemaPath, callback) {
                                                 if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
                                                     rawQuery = rawQuery.join('\n');
                                                 }
-                                                db.raw(rawQuery).exec(callback);
+                                                db.raw(rawQuery).nodeify(callback);
                                                 break;
                                             case 'createTable':
                                                 if (schema[action['table']]) {
