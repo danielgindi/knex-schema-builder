@@ -102,46 +102,57 @@ The schema is an array of actions, each action has the key `action` set, and its
 ## Structure for the *schema.json*
 
     {
-      "<TABLE_NAME>": {
-        "columns": [
-          {
-            "name": "<COLUMN_NAME>",
-            "type": "<TYPE>",
-            "length": <LENGTH>,
-            "text_type": "<TEXT_TYPE>",
-            "precision": <PRECISION>,
-            "scale": <SCALE>,
-            "default": <DEFAULT VALUE>,
-            "raw_default": <RAW DEFAULT VALUE>,
-            "unique": true/false,
-            "primary_key": true/false,
-            "nullable": true/false,
-            "enum_values": ['option1', 'options2', ...]
-          },
-          ...
-        ],
-        "indexes": [
-          {
-            "name": "<INDEX_NAME>",
-            "columns": "<COLUMN_NAME>" or ["<COLUMN_NAME>".. ],
-            "unique": true/false
+        "schema": {
+          "<TABLE_NAME>": {
+            "columns": [
+              {
+                "name": "<COLUMN_NAME>",
+                "type": "<TYPE>",
+                "length": <LENGTH>,
+                "text_type": "<TEXT_TYPE>",
+                "precision": <PRECISION>,
+                "scale": <SCALE>,
+                "default": <DEFAULT VALUE>,
+                "raw_default": <RAW DEFAULT VALUE>,
+                "unique": true/false,
+                "primary_key": true/false,
+                "nullable": true/false,
+                "enum_values": ['option1', 'options2', ...]
+              },
+              ...
+            ],
+            "indexes": [
+              {
+                "name": "<INDEX_NAME>",
+                "columns": "<COLUMN_NAME>" or ["<COLUMN_NAME>".. ],
+                "unique": true/false
+              }
+            ],
+            "foreign_keys": [
+              {
+                "columns": "<COLUMN_NAME>" or ["<COLUMN_NAME>".. ],
+                "foreign_table": "<FOREIGN_TABLE_NAME>",
+                "foreign_columns": "<COLUMN_NAME>" or ["<COLUMN_NAME>".. ],
+                "on_delete": "<FOREIGN_COMMAND>",
+                "on_update": "<FOREIGN_COMMAND>"
+              }
+            ],
+            "primary_key": ["<COLUMN_NAME>", ...],
+            "engine": "<MYSQL_ENGINE_TYPE>",
+            "charset": "<CHARSET>",
+            "collate": "<COLLATION>",
+            "timestamps": true/false // Adds a *created_at* and *updated_at* column on the database, setting these each to `dateTime` types.
           }
-        ],
-        "foreign_keys": [
-          {
-            "columns": "<COLUMN_NAME>" or ["<COLUMN_NAME>".. ],
-            "foreign_table": "<FOREIGN_TABLE_NAME>",
-            "foreign_columns": "<COLUMN_NAME>" or ["<COLUMN_NAME>".. ],
-            "on_delete": "<FOREIGN_COMMAND>",
-            "on_update": "<FOREIGN_COMMAND>"
-          }
-        ],
-        "primary_key": ["<COLUMN_NAME>", ...],
-        "engine": "<MYSQL_ENGINE_TYPE>",
-        "charset": "<CHARSET>",
-        "collate": "<COLLATION>",
-        "timestamps": true/false // Adds a *created_at* and *updated_at* column on the database, setting these each to `dateTime` types.
-      }
+        },
+
+        "raw": [
+            "A raw query here",
+
+            [
+                "multiline raw query",
+                "separated by a comma"
+            ]
+        ]
     }
 
 #### *TYPE*:
