@@ -30,7 +30,6 @@
   "dependencies": {
     "async": "0.9.*",
     "strip-json-comments": "1.*",
-    "bluebird": "^2.0.0",
     "knex": "^0.*"
   }
 }
