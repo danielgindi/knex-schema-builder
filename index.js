@@ -286,11 +286,46 @@ var install = function (db, schemaPath, callback) {
             },
             function (schema, callback) {
 
-                async.eachSeries(Object.keys(schema), function (tableName, callback) {
-                    createTable(db, tableName, schema[tableName], callback);
-                }, function (err) {
-                    callback(err, schema);
-                });
+                if (schema['schema'] && !Array.isArray(schema['schema']['columns'])) {
+
+                    var tables = schema['schema'];
+                    var raw = schema['raw'] || [];
+
+                    // Execute schema building
+
+                    async.eachSeries(Object.keys(tables), function (tableName, callback) {
+                        createTable(db, tableName, tables[tableName], callback);
+                    }, function (err) {
+
+                        // Execute raw queries
+
+                        async.eachSeries(raw, function (rawQuery, callback) {
+                            if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
+                                rawQuery = rawQuery.join('\n');
+                            }
+
+                            if (rawQuery && typeof(rawQuery) === 'string') {
+                                db.raw(rawQuery).exec(callback);
+                            } else {
+                                callback(); // Skip
+                            }
+                        }, function (err) {
+                            callback(err, schema);
+                        })
+
+                    });
+
+                } else {
+
+                    // Just a schema, no raw queries
+
+                    async.eachSeries(Object.keys(schema), function (tableName, callback) {
+                        createTable(db, tableName, schema[tableName], callback);
+                    }, function (err) {
+                        callback(err, schema);
+                    });
+
+                }
 
             },
             function (schema, callback) {
@@ -395,7 +430,11 @@ var upgrade = function (db, schemaPath, callback) {
 
                                         switch (action['action']) {
                                             case 'execute':
-                                                db.raw(action['query']).exec(callback);
+                                                var rawQuery = action['query'];
+                                                if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
+                                                    rawQuery = rawQuery.join('\n');
+                                                }
+                                                db.raw(rawQuery).exec(callback);
                                                 break;
                                             case 'createTable':
                                                 if (schema[action['table']]) {
