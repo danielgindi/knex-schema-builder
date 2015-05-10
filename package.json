@@ -1,6 +1,6 @@
 {
   "name": "knex-schema-builder",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A schema builder module for knex, handles schema initialization and migration",
   "main": "index.js",
   "scripts": {
