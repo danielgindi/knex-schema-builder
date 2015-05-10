@@ -393,14 +393,19 @@ var upgrade = function (db, schemaPath, callback) {
                 });
             },
             function (schema, callback) {
-                getCurrentDbVersion(db, function(err, currentVersion){
+
+                if (schema['schema'] && !Array.isArray(schema['schema']['columns'])) {
+                    schema = schema['schema'];
+                }
+                
+                getCurrentDbVersion(db, function(err, currentVersion) {
                     callback(err, schema, parseInt(currentVersion, 10));
                 });
             },
             function (schema, currentVersion, callback) {
                 originalVersion = currentVersion;
 
-                getLatestDbVersion(schemaPath, function(err, latestVersion){
+                getLatestDbVersion(schemaPath, function(err, latestVersion) {
                     callback(err, schema, currentVersion, latestVersion);
                 });
             },
