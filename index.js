@@ -35,6 +35,13 @@ var readJsonFile = function (path, stripComments, callback) {
 
 };
 
+var startsWith = function (string, prefix) {
+    if (prefix === undefined || prefix === null) return false;
+    if (typeof prefix !== 'string') prefix = prefix.toString();
+    if (string.length < prefix.length) return false;
+    return string.substr(0, prefix.length) === prefix;
+};
+
 /**
  * Description of a table column
  * @typedef {{name: String, type: String, length: Number?, text_type: String?, precision: Number?, scale: Number?, default: *?, raw_default: *?, unique: Boolean?, primary_key: Boolean?, nullable: Boolean?, enum_values: Array<String>?}} TableColumnDescription
@@ -75,7 +82,7 @@ var createColumn = function (table, columnData) {
         throw 'column-missing-type';
     }
 
-    var unsigned = type.startsWith('unsigned ');
+    var unsigned = startsWith(type, 'unsigned ');
     if (unsigned) {
         type = type.substr(9);
     }
