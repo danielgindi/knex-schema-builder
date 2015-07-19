@@ -284,6 +284,8 @@ var createForeign_inner = function (table, foreignKey) {
  */
 var install = function (db, schemaPath, callback) {
 
+    var dbTables = {}, dbRawQueries = [];
+
     async.waterfall(
         [
             function (callback) {
@@ -295,77 +297,76 @@ var install = function (db, schemaPath, callback) {
 
                 if (schema['schema'] && !Array.isArray(schema['schema']['columns'])) {
 
-                    var tables = schema['schema'];
-                    var raw = schema['raw'] || [];
-
-                    // Execute schema building
-
-                    async.eachSeries(Object.keys(tables), function (tableName, callback) {
-                        createTable(db, tableName, tables[tableName], callback);
-                    }, function (err) {
-
-                        // Execute raw queries
-
-                        async.eachSeries(raw, function (rawQuery, callback) {
-                            if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
-                                rawQuery = rawQuery.join('\n');
-                            }
-
-                            if (rawQuery && typeof(rawQuery) === 'string') {
-                                db.raw(rawQuery).nodeify(callback);
-                            } else {
-                                callback(); // Skip
-                            }
-                        }, function (err) {
-                            callback(err, schema);
-                        })
-
-                    });
+                    dbTables = schema['schema'];
+                    dbRawQueries = schema['raw'] || [];
 
                 } else {
 
-                    // Just a schema, no raw queries
-
-                    async.eachSeries(Object.keys(schema), function (tableName, callback) {
-                        createTable(db, tableName, schema[tableName], callback);
-                    }, function (err) {
-                        callback(err, schema);
-                    });
+                    dbTables = schema;
 
                 }
 
+                callback();
+
             },
-            function (schema, callback) {
+            function (callback) {
+
+                // Execute schema building
+
+                async.eachSeries(Object.keys(dbTables), function (tableName, callback) {
+                    createTable(db, tableName, dbTables[tableName], callback);
+                }, function (err) {
+
+                    // Execute raw queries
+
+                    async.eachSeries(dbRawQueries, function (rawQuery, callback) {
+                        if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
+                            rawQuery = rawQuery.join('\n');
+                        }
+
+                        if (rawQuery && typeof(rawQuery) === 'string') {
+                            db.raw(rawQuery).nodeify(callback);
+                        } else {
+                            callback(); // Skip
+                        }
+                    }, function (err) {
+                        callback(err);
+                    })
+
+                });
+
+            },
+            function (callback) {
 
                 var currentTableName;
 
-                async.eachSeries(Object.keys(schema), function (tableName, callback) {
+                async.eachSeries(Object.keys(dbTables), function (tableName, callback) {
                     currentTableName = tableName;
-                    createTableIndexes(db, tableName, schema[tableName], callback);
+                    createTableIndexes(db, tableName, dbTables[tableName], callback);
                 }, function (err) {
                     if (err) {
                         err = 'Failed to create indexes for table ' + currentTableName + '\n' + err.toString();
                     }
-                    callback(err, schema);
+                    callback(err);
                 });
 
             },
-            function (schema, callback) {
+            function (callback) {
 
                 var currentTableName;
 
-                async.eachSeries(Object.keys(schema), function (tableName, callback) {
+                async.eachSeries(Object.keys(dbTables), function (tableName, callback) {
                     currentTableName = tableName;
-                    createTableForeignKeys(db, tableName, schema[tableName], callback);
+                    createTableForeignKeys(db, tableName, dbTables[tableName], callback);
                 }, function (err) {
                     if (err) {
                         err = 'Failed to create foreign keys for table ' + currentTableName + '\n' + err.toString();
                     }
-                    callback(err, schema);
+                    callback(err);
                 });
 
             },
-            function (schema, callback) {
+            function (callback) {
                 getLatestDbVersion(schemaPath, callback);
             },
             function (version, callback) {
