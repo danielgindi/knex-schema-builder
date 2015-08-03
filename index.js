@@ -568,7 +568,7 @@ var upgrade = function (db, schemaPath, callback) {
                             ], function(err){
 
                                 if (err && !hasUpgradeSchema) {
-                                    console.log('Upgrade schema for version ' + (currentVersion + 1) + ' (upgrade.' + currentVersion + '.json) not found, skipping...');
+                                    console.log('Upgrade schema for version ' + (currentVersion + 1) + ' (upgrade.' + (currentVersion + 1) + '.json) not found, skipping...');
                                     err = false;
                                 }
 
