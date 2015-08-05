@@ -568,8 +568,12 @@ var upgrade = function (db, schemaPath, callback) {
                             ], function(err){
 
                                 if (err && !hasUpgradeSchema) {
-                                    console.log('Upgrade schema for version ' + (currentVersion + 1) + ' (upgrade.' + (currentVersion + 1) + '.json) not found or invalid JSON, skipping...');
-                                    err = false;
+                                    if (err instanceof SyntaxError) {
+                                        console.log('Upgrade schema for version ' + (currentVersion + 1) + ' (upgrade.' + (currentVersion + 1) + '.json) contains invalid JSON. Please correct it and try again.');
+                                    } else {
+                                        console.log('Upgrade schema for version ' + (currentVersion + 1) + ' (upgrade.' + (currentVersion + 1) + '.json) not found, skipping...');
+                                        err = false;
+                                    }
                                 }
 
                                 if (!err) {
