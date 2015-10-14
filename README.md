@@ -99,6 +99,9 @@ The schema is an array of actions, each action has the key `action` set, and its
 * `addTimestamps (table)`: Adds the timestamps (*created_at* and *updated_at*) in the table named `table`
 * `dropTimestamps (table)`: Drops the timestamps (*created_at* and *updated_at*) in the table named `table`
 
+Each action can optionally have a `min_version` and/or `max_version` to specify limits for specific action, whether or not it will be executed.
+I.e if upgrading from an older version, you might not want to create certain columns as they have already been created due to a `createTable` action.
+
 ## Structure for the *schema.json*
 
     {
