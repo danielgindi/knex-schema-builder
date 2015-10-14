@@ -760,5 +760,7 @@ module.exports = {
     createTable: createTable,
     createTableIndexes: createTableIndexes,
     createTableForeignKeys: createTableForeignKeys,
-    createIndex: createIndex
+    createIndex: createIndex,
+
+    mysqlBackup: require('./backup/mysql')
 };
