@@ -374,7 +374,7 @@ var MysqlBackupController = {
                                 resolver.reject(err);
                             });
 
-                        return resolver;
+                        return resolver.promise;
 
                     });
 
