@@ -441,11 +441,11 @@ var upgrade = function (db, schemaPath, callback) {
 
                                     async.eachSeries(upgradeSchema, function (action, callback) {
 
-                                        if (action['min_version'] && action['min_version'] < originalVersion) {
+                                        if (action['min_version'] && action['min_version'] >= originalVersion) {
                                             return callback();
                                         }
 
-                                        if (action['max_version'] && action['max_version'] > originalVersion) {
+                                        if (action['max_version'] && action['max_version'] <= originalVersion) {
                                             return callback();
                                         }
 
