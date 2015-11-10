@@ -316,24 +316,27 @@ var install = function (db, schemaPath, callback) {
                 async.eachSeries(Object.keys(dbTables), function (tableName, callback) {
                     createTable(db, tableName, dbTables[tableName], callback);
                 }, function (err) {
-
-                    // Execute raw queries
-
-                    async.eachSeries(dbRawQueries, function (rawQuery, callback) {
-                        if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
-                            rawQuery = rawQuery.join('\n');
-                        }
-
-                        if (rawQuery && typeof(rawQuery) === 'string') {
-                            db.raw(rawQuery).nodeify(callback);
-                        } else {
-                            callback(); // Skip
-                        }
-                    }, function (err) {
-                        callback(err);
-                    })
-
+					callback(err);
                 });
+
+            },
+            function (callback) {
+
+				// Execute raw queries
+
+				async.eachSeries(dbRawQueries, function (rawQuery, callback) {
+					if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
+						rawQuery = rawQuery.join('\n');
+					}
+
+					if (rawQuery && typeof(rawQuery) === 'string') {
+						db.raw(rawQuery).nodeify(callback);
+					} else {
+						callback(); // Skip
+					}
+				}, function (err) {
+					callback(err);
+				})
 
             },
             function (callback) {
