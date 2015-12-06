@@ -444,6 +444,14 @@ var upgrade = function (db, schemaPath, callback) {
 
                                     async.eachSeries(upgradeSchema, function (action, callback) {
 
+                                        var softCallback = function (err) {
+                                            if (err && action['ignore_errors']) {
+                                                console.log('Ignoring error', err);
+                                                err = null;
+                                            }
+                                            callback(err);
+                                        };
+
                                         if (action['min_version'] && action['min_version'] >= originalVersion) {
                                             return callback();
                                         }
@@ -453,77 +461,89 @@ var upgrade = function (db, schemaPath, callback) {
                                         }
 
                                         switch (action['action']) {
+
                                             case 'execute':
                                                 var rawQuery = action['query'];
                                                 if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
                                                     rawQuery = rawQuery.join('\n');
                                                 }
-                                                db.raw(rawQuery).nodeify(callback);
+                                                db.raw(rawQuery).nodeify(softCallback);
                                                 break;
+
                                             case 'createTable':
                                                 if (schema[action['table']]) {
-                                                    createTable(db, action['table'], schema[action['table']], callback);
+                                                    createTable(db, action['table'], schema[action['table']], softCallback);
                                                 } else {
                                                     console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                                    callback('unknown-table');
+                                                    softCallback('unknown-table');
                                                 }
                                                 break;
+
                                             case 'createTableIndexes':
                                                 if (schema[action['table']]) {
-                                                    createTableIndexes(db, action['table'], schema[action['table']], callback);
+                                                    createTableIndexes(db, action['table'], schema[action['table']], softCallback);
                                                 } else {
                                                     console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                                    callback('unknown-table');
+                                                    softCallback('unknown-table');
                                                 }
                                                 break;
+
                                             case 'createTableForeignKeys':
                                                 if (schema[action['table']]) {
-                                                    createTableForeignKeys(db, action['table'], schema[action['table']], callback);
+                                                    createTableForeignKeys(db, action['table'], schema[action['table']], softCallback);
                                                 } else {
                                                     console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                                    callback('unknown-table');
+                                                    softCallback('unknown-table');
                                                 }
                                                 break;
+
                                             case 'addColumn':
                                                 if (schema[action['table']]) {
                                                     var column = schema[action['table']]['columns'].filter(function(item){ return item['name'] === action['column']; })[0];
                                                     if (column) {
                                                         db.schema.table(action['table'], function(table){
                                                             createColumn(table, column);
-                                                        }).nodeify(callback);
+                                                        }).nodeify(softCallback);
                                                     } else {
                                                         console.log('Unknown column named `' + action['column'] + '`. Failing...');
-                                                        callback('unknown-column');
+                                                        softCallback('unknown-column');
                                                     }
                                                 } else {
                                                     console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                                    callback('unknown-table');
+                                                    softCallback('unknown-table');
                                                 }
                                                 break;
+
                                             case 'renameColumn':
                                                 db.schema.table(action['table'], function(table){
                                                     table.renameColumn(action['from'], action['to']);
-                                                }).nodeify(callback);
+                                                }).nodeify(softCallback);
                                                 break;
+
                                             case 'createIndex':
-                                                createIndex(db, action['table'], action, callback);
+                                                createIndex(db, action['table'], action, softCallback);
                                                 break;
+
                                             case 'createForeign':
-                                                createForeign(db, action['table'], action, callback);
+                                                createForeign(db, action['table'], action, softCallback);
                                                 break;
+
                                             case 'dropColumn':
                                                 db.schema.table(action['table'], function(table){
                                                     table.dropColumn(action['column']);
-                                                }).nodeify(callback);
+                                                }).nodeify(softCallback);
                                                 break;
+
                                             case 'dropTable':
-                                                db.schema.dropTableIfExists(action['table']).nodeify(callback);
+                                                db.schema.dropTableIfExists(action['table']).nodeify(softCallback);
                                                 break;
+
                                             case 'dropPrimary':
                                                 db.schema.table(action['table'], function(table){
                                                     table.dropPrimary();
-                                                }).nodeify(callback);
+                                                }).nodeify(softCallback);
                                                 break;
+
                                             case 'dropIndex':
                                                 db.schema.table(action['table'], function(table){
 
@@ -533,8 +553,9 @@ var upgrade = function (db, schemaPath, callback) {
                                                         table.dropIndex(action['column']);
                                                     }
 
-                                                }).nodeify(callback);
+                                                }).nodeify(softCallback);
                                                 break;
+
                                             case 'dropForeign':
                                                 db.schema.table(action['table'], function(table){
 
@@ -544,8 +565,9 @@ var upgrade = function (db, schemaPath, callback) {
                                                         table.dropForeign(action['column']);
                                                     }
 
-                                                }).nodeify(callback);
+                                                }).nodeify(softCallback);
                                                 break;
+
                                             case 'dropUnique':
                                                 db.schema.table(action['table'], function(table){
 
@@ -555,21 +577,24 @@ var upgrade = function (db, schemaPath, callback) {
                                                         table.dropUnique(action['column']);
                                                     }
 
-                                                }).nodeify(callback);
+                                                }).nodeify(softCallback);
                                                 break;
+
                                             case 'addTimestamps':
                                                 db.schema.table(action['table'], function(table){
                                                     table.timestamps();
-                                                }).nodeify(callback);
+                                                }).nodeify(softCallback);
                                                 break;
+
                                             case 'dropTimestamps':
                                                 db.schema.table(action['table'], function(table){
                                                     table.dropTimestamps();
-                                                }).nodeify(callback);
+                                                }).nodeify(softCallback);
                                                 break;
+
                                             default:
                                                 console.log('Unknown upgrade action `' + action['action'] + '`. Failing...');
-                                                callback('unknown-action');
+                                                softCallback('unknown-action');
                                                 break;
                                         }
 
