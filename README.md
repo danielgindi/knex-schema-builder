@@ -74,10 +74,40 @@ Simply
 
 ## Structure for the *upgrade.####.json*
 
-Name of each file contains the version to which you upgrade to.
-i.e upgrade.2.json contains the schema for upgrading from version 1 to version 2.
+* Name of each file contains the version to which you upgrade to. i.e upgrade.2.json contains the schema for upgrading from version 1 to version 2.
+* The schema is an array of actions, each action has the key `action` set, and its options.
+* Each action can optionally have a `min_version` and/or `max_version` to specify limits for specific action, whether or not it will be executed. (i.e if upgrading from an older version, you might not want to create certain columns as they have already been created due to a `createTable` action.)
+* Each action can optionally have a `"ignore_errors": true` specified to ignore errors on the specific action.
 
-The schema is an array of actions, each action has the key `action` set, and its options. Available actions are:
+### Samples for *upgrade.####.json*
+
+#### A simple upgrade
+```
+upgrade.2.json
+[
+  { "action": "dropForeign", "table": "user", "name": "fk_user_to_some_old_table" },
+  { "action": "dropTable", "table": "some_old_table" },
+  { "action": "createTable", "table": "user_special_data" },
+  { "action": "createTableIndexes", "table": "user_special_data" },
+  { "action": "createTableForeignKeys", "table": "user_special_data" },
+  { "action": "execute", "query": "INSERT INTO user_special_data (id) SELECT id FROM user" },
+
+]
+```
+
+#### A case of adding a column, to a table that is created in another upgrade.
+
+```
+upgrade.8.json
+[
+  { "action": "addColumn", "table": "user_special_data", "column": "estimated_age", "min_version": 2 },
+]
+```
+
+What happens here, is that in the upgrade to version *2*, the table `user_special_data` was created. And if a user tries to upgrade from version *1* to version *10*, then the table will be created with all of it's columns, and the `addColumn` in upgrade step *8* will fail because it already exists.  
+The solution is the `min_version`, which means that this action will only take place if the version you are upgrading from is at least *2*, which means that the table already existed and does not have the new column yet.
+
+### Actions for *upgrade.####.json* schema
 
 * `execute (query)`: Execute the query in `query` key
 * `createTable (table)`: Create the table named `table`, without its indexes and foreign keys. You usually want to postpone those to the end of the script.
@@ -98,11 +128,6 @@ The schema is an array of actions, each action has the key `action` set, and its
 * `dropUnique (table, name)`: Drops the unique constraint named `name` in table named `table`
 * `addTimestamps (table)`: Adds the timestamps (*created_at* and *updated_at*) in the table named `table`
 * `dropTimestamps (table)`: Drops the timestamps (*created_at* and *updated_at*) in the table named `table`
-
-Each action can optionally have a `min_version` and/or `max_version` to specify limits for specific action, whether or not it will be executed.
-I.e if upgrading from an older version, you might not want to create certain columns as they have already been created due to a `createTable` action.
-
-Each action can optionally have a `"ignore_errors": true` specified to ignore errors on the specific action.
 
 ## Structure for the *schema.json*
 
