@@ -174,7 +174,7 @@ var createTable = function (db, tableName, tableData, callback) {
         }
     });
 
-    table.nodeify(callback);
+    table.asCallback(callback);
 
 };
 
@@ -187,13 +187,15 @@ var createTable = function (db, tableName, tableData, callback) {
  */
 var createTableIndexes = function (db, tableName, tableData, callback) {
 
-    db.schema.table(tableName, function(table) {
+    db.schema
+        .table(tableName, function(table) {
 
-        (tableData['indexes'] || []).forEach(function (index) {
-            createIndex_inner(table, index);
-        });
+            (tableData['indexes'] || []).forEach(function (index) {
+                createIndex_inner(table, index);
+            });
 
-    }).nodeify(callback);
+        })
+        .asCallback(callback);
 
 };
 
@@ -205,9 +207,11 @@ var createTableIndexes = function (db, tableName, tableData, callback) {
  * @param {function(error:?)} callback
  */
 var createIndex = function (db, tableName, indexData, callback) {
-    db.schema.table(tableName, function(table) {
-        createIndex_inner(table, indexData);
-    }).nodeify(callback);
+    db.schema
+        .table(tableName, function(table) {
+            createIndex_inner(table, indexData);
+        })
+        .asCallback(callback);
 };
 
 /**
@@ -234,13 +238,15 @@ var createIndex_inner = function (table, indexData) {
  */
 var createTableForeignKeys = function (db, tableName, tableData, callback) {
 
-    db.schema.table(tableName, function(table) {
+    db.schema
+        .table(tableName, function(table) {
 
-        (tableData['foreign_keys'] || []).forEach(function (foreignKeyData) {
-            createForeign_inner(table, foreignKeyData);
-        });
+            (tableData['foreign_keys'] || []).forEach(function (foreignKeyData) {
+                createForeign_inner(table, foreignKeyData);
+            });
 
-    }).nodeify(callback);
+        })
+        .asCallback(callback);
 
 };
 
@@ -252,9 +258,11 @@ var createTableForeignKeys = function (db, tableName, tableData, callback) {
  * @param {function(error:?)} callback
  */
 var createForeign = function (db, tableName, foreignKey, callback) {
-    db.schema.table(tableName, function(table) {
-        createForeign_inner(table, foreignKey);
-    }).nodeify(callback);
+    db.schema
+        .table(tableName, function(table) {
+            createForeign_inner(table, foreignKey);
+        })
+        .asCallback(callback);
 };
 
 /**
@@ -316,27 +324,27 @@ var install = function (db, schemaPath, callback) {
                 async.eachSeries(Object.keys(dbTables), function (tableName, callback) {
                     createTable(db, tableName, dbTables[tableName], callback);
                 }, function (err) {
-					callback(err);
+                    callback(err);
                 });
 
             },
             function (callback) {
 
-				// Execute raw queries
+                // Execute raw queries
 
-				async.eachSeries(dbRawQueries, function (rawQuery, callback) {
-					if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
-						rawQuery = rawQuery.join('\n');
-					}
+                async.eachSeries(dbRawQueries, function (rawQuery, callback) {
+                    if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
+                        rawQuery = rawQuery.join('\n');
+                    }
 
-					if (rawQuery && typeof(rawQuery) === 'string') {
-						db.raw(rawQuery).nodeify(callback);
-					} else {
-						callback(); // Skip
-					}
-				}, function (err) {
-					callback(err);
-				})
+                    if (rawQuery && typeof(rawQuery) === 'string') {
+                        db.raw(rawQuery).asCallback(callback);
+                    } else {
+                        callback(); // Skip
+                    }
+                }, function (err) {
+                    callback(err);
+                })
 
             },
             function (callback) {
@@ -408,7 +416,7 @@ var upgrade = function (db, schemaPath, callback) {
                 if (schema['schema'] && !Array.isArray(schema['schema']['columns'])) {
                     schema = schema['schema'];
                 }
-                
+
                 getCurrentDbVersion(db, function(err, currentVersion) {
                     callback(err, schema, parseInt(currentVersion, 10));
                 });
@@ -467,7 +475,7 @@ var upgrade = function (db, schemaPath, callback) {
                                                 if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
                                                     rawQuery = rawQuery.join('\n');
                                                 }
-                                                db.raw(rawQuery).nodeify(softCallback);
+                                                db.raw(rawQuery).asCallback(softCallback);
                                                 break;
 
                                             case 'createTable':
@@ -501,9 +509,11 @@ var upgrade = function (db, schemaPath, callback) {
                                                 if (schema[action['table']]) {
                                                     var column = schema[action['table']]['columns'].filter(function(item){ return item['name'] === action['column']; })[0];
                                                     if (column) {
-                                                        db.schema.table(action['table'], function(table){
-                                                            createColumn(table, column);
-                                                        }).nodeify(softCallback);
+                                                        db.schema
+                                                            .table(action['table'], function(table){
+                                                                createColumn(table, column);
+                                                            })
+                                                            .asCallback(softCallback);
                                                     } else {
                                                         console.log('Unknown column named `' + action['column'] + '`. Failing...');
                                                         softCallback('unknown-column');
@@ -515,9 +525,11 @@ var upgrade = function (db, schemaPath, callback) {
                                                 break;
 
                                             case 'renameColumn':
-                                                db.schema.table(action['table'], function(table){
-                                                    table.renameColumn(action['from'], action['to']);
-                                                }).nodeify(softCallback);
+                                                db.schema
+                                                    .table(action['table'], function(table){
+                                                        table.renameColumn(action['from'], action['to']);
+                                                    })
+                                                    .asCallback(softCallback);
                                                 break;
 
                                             case 'createIndex':
@@ -529,67 +541,81 @@ var upgrade = function (db, schemaPath, callback) {
                                                 break;
 
                                             case 'dropColumn':
-                                                db.schema.table(action['table'], function(table){
-                                                    table.dropColumn(action['column']);
-                                                }).nodeify(softCallback);
+                                                db.schema
+                                                    .table(action['table'], function(table){
+                                                        table.dropColumn(action['column']);
+                                                    })
+                                                    .asCallback(softCallback);
                                                 break;
 
                                             case 'dropTable':
-                                                db.schema.dropTableIfExists(action['table']).nodeify(softCallback);
+                                                db.schema.dropTableIfExists(action['table']).asCallback(softCallback);
                                                 break;
 
                                             case 'dropPrimary':
-                                                db.schema.table(action['table'], function(table){
-                                                    table.dropPrimary();
-                                                }).nodeify(softCallback);
+                                                db.schema
+                                                    .table(action['table'], function(table){
+                                                        table.dropPrimary();
+                                                    })
+                                                    .asCallback(softCallback);
                                                 break;
 
                                             case 'dropIndex':
-                                                db.schema.table(action['table'], function(table){
+                                                db.schema
+                                                    .table(action['table'], function(table){
 
-                                                    if (action['name']) {
-                                                        table.dropIndex(null, action['name']);
-                                                    } else {
-                                                        table.dropIndex(action['column']);
-                                                    }
+                                                        if (action['name']) {
+                                                            table.dropIndex(null, action['name']);
+                                                        } else {
+                                                            table.dropIndex(action['column']);
+                                                        }
 
-                                                }).nodeify(softCallback);
+                                                    })
+                                                    .asCallback(softCallback);
                                                 break;
 
                                             case 'dropForeign':
-                                                db.schema.table(action['table'], function(table){
+                                                db.schema
+                                                    .table(action['table'], function(table){
 
-                                                    if (action['name']) {
-                                                        table.dropForeign(null, action['name']);
-                                                    } else {
-                                                        table.dropForeign(action['column']);
-                                                    }
+                                                        if (action['name']) {
+                                                            table.dropForeign(null, action['name']);
+                                                        } else {
+                                                            table.dropForeign(action['column']);
+                                                        }
 
-                                                }).nodeify(softCallback);
+                                                    })
+                                                    .asCallback(softCallback);
                                                 break;
 
                                             case 'dropUnique':
-                                                db.schema.table(action['table'], function(table){
+                                                db.schema
+                                                    .table(action['table'], function(table){
 
-                                                    if (action['name']) {
-                                                        table.dropUnique(null, action['name']);
-                                                    } else {
-                                                        table.dropUnique(action['column']);
-                                                    }
+                                                        if (action['name']) {
+                                                            table.dropUnique(null, action['name']);
+                                                        } else {
+                                                            table.dropUnique(action['column']);
+                                                        }
 
-                                                }).nodeify(softCallback);
+                                                    })
+                                                    .asCallback(softCallback);
                                                 break;
 
                                             case 'addTimestamps':
-                                                db.schema.table(action['table'], function(table){
-                                                    table.timestamps();
-                                                }).nodeify(softCallback);
+                                                db.schema
+                                                    .table(action['table'], function(table){
+                                                        table.timestamps();
+                                                    })
+                                                    .asCallback(softCallback);
                                                 break;
 
                                             case 'dropTimestamps':
-                                                db.schema.table(action['table'], function(table){
-                                                    table.dropTimestamps();
-                                                }).nodeify(softCallback);
+                                                db.schema
+                                                    .table(action['table'], function(table){
+                                                        table.dropTimestamps();
+                                                    })
+                                                    .asCallback(softCallback);
                                                 break;
 
                                             default:
@@ -657,14 +683,17 @@ var ensureSchemaGlobalsExist = function (db, callback) {
         if (exists) {
             callback();
         } else {
-            db.schema.createTable('schema_globals', function(table){
-                table.string('key', 64).notNullable().primary();;
-                table.string('value', 255);
-            }).then(function(){
-                callback();
-            }).catch(function(err){
-                callback(err);
-            });
+            db.schema
+                .createTable('schema_globals', function(table){
+                    table.string('key', 64).notNullable().primary();;
+                    table.string('value', 255);
+                })
+                .then(function(){
+                    callback();
+                })
+                .catch(function(err){
+                    callback(err);
+                });
         }
 
     }).catch(function(err){
@@ -683,9 +712,13 @@ var getCurrentDbVersion = function (db, callback) {
     ensureSchemaGlobalsExist(db, function(err) {
         if (err) return callback(err);
 
-        db.select('value').from('schema_globals').where('key', 'db_version').limit(1).nodeify(function(err, rows){
-            callback(err, (rows && rows.length) ? rows[0]['value'] : null);
-        });
+        db.select('value')
+            .from('schema_globals')
+            .where('key', 'db_version')
+            .limit(1)
+            .asCallback(function(err, rows){
+                callback(err, (rows && rows.length) ? rows[0]['value'] : null);
+            });
     });
 
 };
@@ -700,30 +733,22 @@ var setCurrentDbVersion = function (db, version, callback) {
 
     getCurrentDbVersion(db, function(err, currentDbVersion) {
         if (err) return callback(err);
-        
-        if(currentDbVersion == null){
-        	
-            db.insert({'value': version, 'key': 'db_version'}).into('schema_globals').then(function(){
-            	
-                callback();
-                
-            }).catch(function(error){
-            	
-                callback(error);
-                
-            });
+
+        if (currentDbVersion == null) {
+            db
+                .insert({'value': version, 'key': 'db_version'})
+                .into('schema_globals')
+                .asCallback(callback);
         } else {
-            db.table('schema_globals').update('value', version).where('key', 'db_version').then(function(){
-            	
-                callback();
-                
-            }).catch(function(error){
-            	
-                callback(error);
-                
-            });
+            db
+                .table('schema_globals')
+                .update('value', version)
+                .where('key', 'db_version')
+                .asCallback(callback);
         }
+
     });
+
 };
 
 /**
