@@ -1,7 +1,6 @@
 "use strict";
 
 var path = require('path'),
-    async = require('async'),
     fs = require('fs'),
     stripJsonComments = require('strip-json-comments'),
     knex = require('knex');
@@ -37,17 +36,17 @@ var readJsonFile = function (path, stripComments, callback) {
 
 var readJsonFilePromisified = knex.Promise.promisify(readJsonFile);
 
-var promiseWhile = function(condition, action) {
+var promiseWhile = function (condition, action) {
 
     return new knex.Promise(function (resolve, reject) {
 
-        var loop = function() {
+        var loop = function () {
 
             if (!condition()) {
                 return resolve();
             }
 
-            return action
+            return knex.Promise.cast(action())
                 .then(loop)
                 .catch(reject);
         };
@@ -396,7 +395,7 @@ var install = function (db, schemaPath, callback) {
 
             return knex.Promise.each(Object.keys(dbTables), function (tableName) {
 
-                createTableIndexes(db, tableName, dbTables[tableName])
+                return createTableIndexes(db, tableName, dbTables[tableName])
                     .catch(function (err) {
 
                         err = 'Failed to create indexes for table ' + tableName + '\n' + err.toString();
@@ -410,7 +409,7 @@ var install = function (db, schemaPath, callback) {
 
             return knex.Promise.each(Object.keys(dbTables), function (tableName) {
 
-                createTableForeignKeys(db, tableName, dbTables[tableName])
+                return createTableForeignKeys(db, tableName, dbTables[tableName])
                     .catch(function (err) {
 
                         err = 'Failed to create foreign keys for table ' + tableName + '\n' + err.toString();
@@ -463,7 +462,7 @@ var upgrade = function (db, schemaPath, callback) {
 
             return getCurrentDbVersion(db)
                 .then(function (version) {
-                    currentVersion = version;
+                    originalVersion = currentVersion = version;
 
                     return getLatestDbVersion(schemaPath);
                 })
@@ -484,7 +483,7 @@ var upgrade = function (db, schemaPath, callback) {
                     var hasUpgradeSchema = false;
                     var upgradeSchema;
 
-                    readJsonFilePromisified(path.join(schemaPath, 'upgrade.' + (currentVersion + 1) + '.json'), true)
+                    return readJsonFilePromisified(path.join(schemaPath, 'upgrade.' + (currentVersion + 1) + '.json'), true)
                         .then(function (schema) {
                             upgradeSchema = schema;
                             hasUpgradeSchema = true;
