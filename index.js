@@ -698,24 +698,32 @@ var getCurrentDbVersion = function (db, callback) {
  */
 var setCurrentDbVersion = function (db, version, callback) {
 
-    ensureSchemaGlobalsExist(db, function(err) {
+    getCurrentDbVersion(db, function(err, currentDbVersion) {
         if (err) return callback(err);
-
-        db.insert({'value': version, 'key': 'db_version'}).into('schema_globals').then(function(){
-
-            callback();
-
-        }).catch(function(){
-
-            db.table('schema_globals').update('value', version).where('key', 'db_version').then(function(){
+        
+        if(currentDbVersion == null){
+        	
+            db.insert({'value': version, 'key': 'db_version'}).into('schema_globals').then(function(){
+            	
                 callback();
+                
             }).catch(function(error){
+            	
                 callback(error);
+                
             });
-
-        })
+        } else {
+            db.table('schema_globals').update('value', version).where('key', 'db_version').then(function(){
+            	
+                callback();
+                
+            }).catch(function(error){
+            	
+                callback(error);
+                
+            });
+        }
     });
-
 };
 
 /**
