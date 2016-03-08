@@ -678,27 +678,30 @@ var upgrade = function (db, schemaPath, callback) {
 
 var ensureSchemaGlobalsExist = function (db, callback) {
 
-    db.schema.hasTable('schema_globals').then(function(exists){
+    db.schema
+        .hasTable('schema_globals')
+        .then(function(exists){
 
-        if (exists) {
-            callback();
-        } else {
-            db.schema
-                .createTable('schema_globals', function(table){
-                    table.string('key', 64).notNullable().primary();;
-                    table.string('value', 255);
-                })
-                .then(function(){
-                    callback();
-                })
-                .catch(function(err){
-                    callback(err);
-                });
-        }
+            if (exists) {
+                callback();
+            } else {
+                db.schema
+                    .createTable('schema_globals', function(table){
+                        table.string('key', 64).notNullable().primary();;
+                        table.string('value', 255);
+                    })
+                    .then(function(){
+                        callback();
+                    })
+                    .catch(function(err){
+                        callback(err);
+                    });
+            }
 
-    }).catch(function(err){
-        callback(err);
-    });
+        })
+        .catch(function(err){
+            callback(err);
+        });
 
 };
 

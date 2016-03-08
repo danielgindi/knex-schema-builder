@@ -67,41 +67,47 @@ var MysqlBackupController = {
             outputStream.write('START TRANSACTION ' + DELIMITER + NEW_LINE);
         }
 
-        return Promise.resolve().then(function () {
+        return Promise.resolve()
+            .then(function () {
 
-            if (options.routines) {
-                return MysqlBackupController.exportRoutines(knex, outputStream, options);
-            }
+                if (options.routines) {
+                    return MysqlBackupController.exportRoutines(knex, outputStream, options);
+                }
 
-        }).then(function () {
+            })
+            .then(function () {
 
-            if (options.tableStructure) {
-                return MysqlBackupController.exportTableStructure(knex, outputStream, options);
-            }
+                if (options.tableStructure) {
+                    return MysqlBackupController.exportTableStructure(knex, outputStream, options);
+                }
 
-        }).then(function () {
+            })
+            .then(function () {
 
-            if (options.tableData) {
-                return MysqlBackupController.exportTableData(knex, outputStream, options);
-            }
+                if (options.tableData) {
+                    return MysqlBackupController.exportTableData(knex, outputStream, options);
+                }
 
-        }).then(function () {
+            })
+            .then(function () {
 
-            if (options.triggers) {
-                return MysqlBackupController.exportTriggers(knex, outputStream, options);
-            }
+                if (options.triggers) {
+                    return MysqlBackupController.exportTriggers(knex, outputStream, options);
+                }
 
-        }).then(function () {
+            })
+            .then(function () {
 
-            outputStream.write('SET FOREIGN_KEY_CHECKS=1 ' + DELIMITER + NEW_LINE);
+                outputStream.write('SET FOREIGN_KEY_CHECKS=1 ' + DELIMITER + NEW_LINE);
 
-        }).then(function () {
+            })
+            .then(function () {
 
-            if (options.wrapInTransaction) {
-                outputStream.write('COMMIT ' + DELIMITER + NEW_LINE);
-            }
+                if (options.wrapInTransaction) {
+                    outputStream.write('COMMIT ' + DELIMITER + NEW_LINE);
+                }
 
-        });
+            });
     },
 
     /**
@@ -234,8 +240,8 @@ var MysqlBackupController = {
             .where('TABLE_SCHEMA', knex.raw('SCHEMA()'))
             .andWhere('TABLE_NAME', tableName)
             .then(function (rows) {
-            return rows.length && rows[0]['TABLE_NAME'] != null;
-        });
+                return rows.length && rows[0]['TABLE_NAME'] != null;
+            });
     },
 
     /**
@@ -298,41 +304,42 @@ var MysqlBackupController = {
 
             return Promise.each(tables, function (tableName) {
 
-                return MysqlBackupController.isView(knex, tableName)
-                    .then(function (isView) {
+                    return MysqlBackupController.isView(knex, tableName)
+                        .then(function (isView) {
 
-                        if (isView) {
-                            views.push(tableName);
-                            return;
-                        }
+                            if (isView) {
+                                views.push(tableName);
+                                return;
+                            }
+
+                            if (options.dropTable) {
+                                outputStream.write('DROP TABLE IF EXISTS ' + wrapObjectName(tableName) + ' ' + DELIMITER + NEW_LINE);
+                            }
+
+                            return MysqlBackupController.getObjectCreate(knex, DbObjectType.Table, tableName, !options.dropTable)
+                                .then(function (createSql) {
+                                    outputStream.write(createSql + ' ' + DELIMITER + NEW_LINE);
+                                });
+
+                        });
+
+                })
+                .then(function () {
+
+                    return Promise.each(views, function (viewName) {
 
                         if (options.dropTable) {
-                            outputStream.write('DROP TABLE IF EXISTS ' + wrapObjectName(tableName) + ' ' + DELIMITER + NEW_LINE);
+                            outputStream.write('DROP VIEW IF EXISTS ' + wrapObjectName(viewName) + ' ' + DELIMITER + NEW_LINE);
                         }
 
-                        return MysqlBackupController.getObjectCreate(knex, DbObjectType.Table, tableName, !options.dropTable)
+                        return MysqlBackupController.getObjectCreate(knex, DbObjectType.View, viewName, !options.dropTable)
                             .then(function (createSql) {
                                 outputStream.write(createSql + ' ' + DELIMITER + NEW_LINE);
                             });
 
-                    });
+                    })
 
-            }).then(function () {
-
-                return Promise.each(views, function (viewName) {
-
-                    if (options.dropTable) {
-                        outputStream.write('DROP VIEW IF EXISTS ' + wrapObjectName(viewName) + ' ' + DELIMITER + NEW_LINE);
-                    }
-
-                    return MysqlBackupController.getObjectCreate(knex, DbObjectType.View, viewName, !options.dropTable)
-                        .then(function (createSql) {
-                            outputStream.write(createSql + ' ' + DELIMITER + NEW_LINE);
-                        });
-
-                })
-
-            });
+                });
 
         });
 
