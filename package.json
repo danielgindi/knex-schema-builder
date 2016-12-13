@@ -28,7 +28,8 @@
   },
   "homepage": "https://github.com/danielgindi/knex-schema-builder",
   "dependencies": {
-    "strip-json-comments": "1.*",
-    "knex": "^0.*"
+    "bluebird": "^3.4.6",
+    "knex": "^0.*",
+    "strip-json-comments": "1.*"
   }
 }

@@ -1,9 +1,10 @@
 "use strict";
 
-var path = require('path'),
-    fs = require('fs'),
+var Path = require('path'),
+    Fs = require('fs'),
     stripJsonComments = require('strip-json-comments'),
-    knex = require('knex');
+    knex = require('knex'),
+    Bluebird = require('bluebird');
 
 // A little helper that goes with me everywhere
 
@@ -14,7 +15,7 @@ var readJsonFile = function (path, stripComments, callback) {
         stripComments = false;
     }
 
-    fs.readFile(path, 'utf8', function (err, json) {
+    Fs.readFile(path, 'utf8', function (err, json) {
         if (err) {
             callback(err);
         } else {
@@ -34,11 +35,11 @@ var readJsonFile = function (path, stripComments, callback) {
 
 };
 
-var readJsonFilePromisified = knex.Promise.promisify(readJsonFile);
+var readJsonFilePromisified = Bluebird.promisify(readJsonFile);
 
 var promiseWhile = function (condition, action) {
 
-    return new knex.Promise(function (resolve, reject) {
+    return new Bluebird(function (resolve, reject) {
 
         var loop = function () {
 
@@ -46,7 +47,7 @@ var promiseWhile = function (condition, action) {
                 return resolve();
             }
 
-            return knex.Promise.cast(action())
+            return Bluebird.cast(action())
                 .then(loop)
                 .catch(reject);
         };
@@ -350,7 +351,7 @@ var install = function (db, schemaPath, callback) {
 
     var dbTables = {}, dbRawQueries = [];
 
-    var promise = readJsonFilePromisified(path.join(schemaPath, 'schema.json'), true)
+    var promise = readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true)
         .then(function (schema) {
 
             if (schema['schema'] && !Array.isArray(schema['schema']['columns'])) {
@@ -369,7 +370,7 @@ var install = function (db, schemaPath, callback) {
 
             // Execute schema building
 
-            return knex.Promise.each(Object.keys(dbTables), function (tableName) {
+            return Bluebird.each(Object.keys(dbTables), function (tableName) {
                 return createTable(db, tableName, dbTables[tableName]);
             });
 
@@ -378,7 +379,7 @@ var install = function (db, schemaPath, callback) {
 
             // Execute raw queries
 
-            return knex.Promise.each(dbRawQueries, function (rawQuery) {
+            return Bluebird.each(dbRawQueries, function (rawQuery) {
 
                 if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
                     rawQuery = rawQuery.join('\n');
@@ -393,7 +394,7 @@ var install = function (db, schemaPath, callback) {
         })
         .then(function () {
 
-            return knex.Promise.each(Object.keys(dbTables), function (tableName) {
+            return Bluebird.each(Object.keys(dbTables), function (tableName) {
 
                 return createTableIndexes(db, tableName, dbTables[tableName])
                     .catch(function (err) {
@@ -407,7 +408,7 @@ var install = function (db, schemaPath, callback) {
         })
         .then(function () {
 
-            return knex.Promise.each(Object.keys(dbTables), function (tableName) {
+            return Bluebird.each(Object.keys(dbTables), function (tableName) {
 
                 return createTableForeignKeys(db, tableName, dbTables[tableName])
                     .catch(function (err) {
@@ -448,7 +449,7 @@ var upgrade = function (db, schemaPath, callback) {
 
     var schema, currentVersion, latestVersion, originalVersion, saveVersion;
 
-    var promise = readJsonFilePromisified(path.join(schemaPath, 'schema.json'), true)
+    var promise = readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true)
         .then(function (schemaJson) {
 
             if (schemaJson['schema'] && !Array.isArray(schemaJson['schema']['columns'])) {
@@ -483,14 +484,14 @@ var upgrade = function (db, schemaPath, callback) {
                     var hasUpgradeSchema = false;
                     var upgradeSchema;
 
-                    return readJsonFilePromisified(path.join(schemaPath, 'upgrade.' + (currentVersion + 1) + '.json'), true)
+                    return readJsonFilePromisified(Path.join(schemaPath, 'upgrade.' + (currentVersion + 1) + '.json'), true)
                         .then(function (schema) {
                             upgradeSchema = schema;
                             hasUpgradeSchema = true;
                         })
                         .then(function () {
 
-                            return knex.Promise.each(upgradeSchema, function (action) {
+                            return Bluebird.each(upgradeSchema, function (action) {
 
                                 var softThrow = function (err) {
                                     if (err && action['ignore_errors']) {
@@ -837,7 +838,7 @@ var setCurrentDbVersion = function (db, version, callback) {
  */
 var getLatestDbVersion = function (schemaPath, callback) {
 
-    var promise = readJsonFilePromisified(path.join(schemaPath, 'version.json'), true)
+    var promise = readJsonFilePromisified(Path.join(schemaPath, 'version.json'), true)
         .then(function (data) {
             if (data) {
                 return data['version'];
