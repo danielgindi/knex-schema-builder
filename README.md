@@ -15,6 +15,7 @@ The concept is like this:
 2. You call either `install` or `upgrade` in order to install a fresh database or migrate.
 3. You can call `isInstallNeeded` and `isUpgradeNeeded` to determine if you need to call `install` or `upgrade`. Maybe use it to automatically redirect to a screen telling the admin that a fresh installation or an upgrade process is about to begin...
 4. You can manually call individual helper functions to create a table, column etc. (i.e. when you create tables dynamically with a predefined schema...)
+5. Call `setTablePrefix(prefix)` before any `install` or `upgrade`, if you want to prefix the table names with something. (Use `{table_prefix}` as a placeholder in raw statements).
 
 Usage example:
 
