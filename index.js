@@ -6,6 +6,8 @@ var Path = require('path'),
     knex = require('knex'),
     Bluebird = require('bluebird');
 
+var _tablePrefix = '';
+
 // A little helper that goes with me everywhere
 
 var readJsonFile = function (path, stripComments, callback) {
@@ -173,7 +175,7 @@ var createColumn = function (table, columnData) {
  */
 var createTable = function (db, tableName, tableData, callback) {
 
-    var table = db.schema.createTable(tableName, function(table) {
+    var table = db.schema.createTable(_tablePrefix + tableName, function(table) {
 
         var columns = tableData['columns'];
         if (columns) {
@@ -221,7 +223,7 @@ var createTable = function (db, tableName, tableData, callback) {
 var createTableIndexes = function (db, tableName, tableData, callback) {
 
     var promise = db.schema
-        .table(tableName, function(table) {
+        .table(_tablePrefix + tableName, function(table) {
 
             (tableData['indexes'] || []).forEach(function (index) {
                 createIndex_inner(table, index);
@@ -247,7 +249,7 @@ var createTableIndexes = function (db, tableName, tableData, callback) {
 var createIndex = function (db, tableName, indexData, callback) {
 
     var promise = db.schema
-        .table(tableName, function(table) {
+        .table(_tablePrefix + tableName, function(table) {
             createIndex_inner(table, indexData);
         });
 
@@ -284,7 +286,7 @@ var createIndex_inner = function (table, indexData) {
 var createTableForeignKeys = function (db, tableName, tableData, callback) {
 
     var promise = db.schema
-        .table(tableName, function(table) {
+        .table(_tablePrefix + tableName, function(table) {
 
             (tableData['foreign_keys'] || []).forEach(function (foreignKeyData) {
                 createForeign_inner(table, foreignKeyData);
@@ -310,7 +312,7 @@ var createTableForeignKeys = function (db, tableName, tableData, callback) {
 var createForeign = function (db, tableName, foreignKey, callback) {
 
     var promise = db.schema
-        .table(tableName, function(table) {
+        .table(_tablePrefix + tableName, function(table) {
             createForeign_inner(table, foreignKey);
         });
 
@@ -331,7 +333,7 @@ var createForeign_inner = function (table, foreignKey) {
         foreigns = foreignKey['foreign_columns'];
     columns = (columns && !(columns instanceof Array)) ? [columns] : columns;
     foreigns = (foreigns && !(foreigns instanceof Array)) ? [foreigns] : foreigns;
-    var foreign = table.foreign(columns).references(foreigns).inTable(foreignKey['foreign_table']);
+    var foreign = table.foreign(columns).references(foreigns).inTable(_tablePrefix + foreignKey['foreign_table']);
     if (foreignKey['on_update']) {
         foreign.onUpdate(foreignKey['on_update']);
     }
@@ -386,7 +388,7 @@ var install = function (db, schemaPath, callback) {
                 }
 
                 if (rawQuery && typeof(rawQuery) === 'string') {
-                    return db.raw(rawQuery);
+                    return db.raw(rawQuery.replace(/\{table_prefix}/g, _tablePrefix));
                 }
 
             });
@@ -777,7 +779,7 @@ var getCurrentDbVersion = function (db, callback) {
 
             return db.select('value')
                 .from('schema_globals')
-                .where('key', 'db_version')
+                .where('key', _tablePrefix + 'db_version')
                 .limit(1)
                 .then(function (rows) {
                     return (rows && rows.length) ? parseFloat(rows[0]['value']) : null;
@@ -805,7 +807,7 @@ var setCurrentDbVersion = function (db, version, callback) {
 
             if (currentDbVersion == null) {
                 return db
-                    .insert({'value': version, 'key': 'db_version'})
+                    .insert({'value': version, 'key': _tablePrefix + 'db_version'})
                     .into('schema_globals')
                     .then(function () {
                         return version;
@@ -815,7 +817,7 @@ var setCurrentDbVersion = function (db, version, callback) {
                 return db
                     .table('schema_globals')
                     .update('value', version)
-                    .where('key', 'db_version')
+                    .where('key', _tablePrefix + 'db_version')
                     .then(function () {
                         return version;
                     });
@@ -900,7 +902,31 @@ var isInstallNeeded = function (db, schemaPath, callback) {
     return promise;
 };
 
+/**
+ * Sets a generic table prefix for all table creations
+ * @param {Object} db A knex instance
+ * @param {String} schemaPath Path to where the schema files reside
+ * @param {function(error:?,isInstallNeeded:Boolean?)?} callback
+ * @returns {Promise.<Boolean>|*}
+ */
+var setTablePrefix = function (prefix, callback) {
+
+    _tablePrefix = prefix == null ? '' : (prefix + '');
+
+    if (typeof callback === 'function') {
+        process.nextTick(function () {
+           callback(null, _tablePrefix);
+        });
+    }
+
+    return new Promise(function (resolve, reject) {
+        resolve(_tablePrefix);
+    });
+};
+
 module.exports = {
+    setTablePrefix: setTablePrefix,
+
     isInstallNeeded: isInstallNeeded,
     isUpgradeNeeded: isUpgradeNeeded,
 
