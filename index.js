@@ -511,7 +511,7 @@ var upgrade = function (db, schemaPath, callback) {
                                 if (action['max_version'] && action['max_version'] <= originalVersion) {
                                     return;
                                 }
-
+                                
                                 switch (action['action']) {
 
                                     case 'execute':
@@ -555,7 +555,7 @@ var upgrade = function (db, schemaPath, callback) {
                                             var column = schema[action['table']]['columns'].filter(function(item){ return item['name'] === action['column']; })[0];
                                             if (column) {
                                                 return db.schema
-                                                    .table(action['table'], function(table){
+                                                    .table(_tablePrefix + action['table'], function(table) {
                                                         createColumn(table, column);
                                                     })
                                                     .catch(softThrow);
@@ -571,7 +571,7 @@ var upgrade = function (db, schemaPath, callback) {
 
                                     case 'renameColumn':
                                         return db.schema
-                                            .table(action['table'], function(table){
+                                            .table(_tablePrefix + action['table'], function(table) {
                                                 table.renameColumn(action['from'], action['to']);
                                             })
                                             .catch(softThrow);
@@ -587,19 +587,19 @@ var upgrade = function (db, schemaPath, callback) {
 
                                     case 'dropColumn':
                                         return db.schema
-                                            .table(action['table'], function(table){
+                                            .table(_tablePrefix + action['table'], function(table) {
                                                 table.dropColumn(action['column']);
                                             })
                                             .catch(softThrow);
                                         break;
 
                                     case 'dropTable':
-                                        return db.schema.dropTableIfExists(action['table']).catch(softThrow);
+                                        return db.schema.dropTableIfExists(_tablePrefix + action['table']).catch(softThrow);
                                         break;
 
                                     case 'dropPrimary':
                                         return db.schema
-                                            .table(action['table'], function(table){
+                                            .table(_tablePrefix + action['table'], function(table){
                                                 table.dropPrimary();
                                             })
                                             .catch(softThrow);
@@ -607,7 +607,7 @@ var upgrade = function (db, schemaPath, callback) {
 
                                     case 'dropIndex':
                                         return db.schema
-                                            .table(action['table'], function(table){
+                                            .table(_tablePrefix + action['table'], function(table){
 
                                                 if (action['name']) {
                                                     table.dropIndex(null, action['name']);
@@ -621,7 +621,7 @@ var upgrade = function (db, schemaPath, callback) {
 
                                     case 'dropForeign':
                                         return db.schema
-                                            .table(action['table'], function(table){
+                                            .table(_tablePrefix + action['table'], function(table){
 
                                                 if (action['name']) {
                                                     table.dropForeign(null, action['name']);
@@ -635,7 +635,7 @@ var upgrade = function (db, schemaPath, callback) {
 
                                     case 'dropUnique':
                                         return db.schema
-                                            .table(action['table'], function(table){
+                                            .table(_tablePrefix + action['table'], function(table){
 
                                                 if (action['name']) {
                                                     table.dropUnique(null, action['name']);
@@ -649,7 +649,7 @@ var upgrade = function (db, schemaPath, callback) {
 
                                     case 'addTimestamps':
                                         return db.schema
-                                            .table(action['table'], function(table){
+                                            .table(_tablePrefix + action['table'], function(table){
                                                 table.timestamps();
                                             })
                                             .catch(softThrow);
@@ -657,7 +657,7 @@ var upgrade = function (db, schemaPath, callback) {
 
                                     case 'dropTimestamps':
                                         return db.schema
-                                            .table(action['table'], function(table){
+                                            .table(_tablePrefix + action['table'], function(table){
                                                 table.dropTimestamps();
                                             })
                                             .catch(softThrow);
