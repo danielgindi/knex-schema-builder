@@ -388,7 +388,7 @@ var install = function (db, schemaPath, callback) {
                 }
 
                 if (rawQuery && typeof(rawQuery) === 'string') {
-                    return db.raw(rawQuery.replace(/\{table_prefix}/g, _tablePrefix));
+                    return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix));
                 }
 
             });
@@ -520,7 +520,7 @@ var upgrade = function (db, schemaPath, callback) {
                                             rawQuery = rawQuery.join('\n');
                                         }
 
-                                        return db.raw(rawQuery).catch(softThrow);
+                                        return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix)).catch(softThrow);
                                         break;
 
                                     case 'createTable':
