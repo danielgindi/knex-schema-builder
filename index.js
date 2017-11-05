@@ -3,7 +3,6 @@
 var Path = require('path'),
     Fs = require('fs'),
     stripJsonComments = require('strip-json-comments'),
-    knex = require('knex'),
     Bluebird = require('bluebird');
 
 var _tablePrefix = '';
@@ -94,11 +93,12 @@ var startsWith = function (string, prefix) {
 /**
  * Manually create a column in a table
  * This does not create the indexes or foreign keys - they are created in different calls.
+ * @param {Object} db A knex instance
  * @param {Object} table A knex table instance (inside a "table" call)
  * @param {TableColumnDescription} columnData The column data
  * @returns {Object} knex column
  */
-var createColumn = function (table, columnData) {
+var createColumn = function (db, table, columnData) {
 
     var name = columnData['name'];
     if (!name) {
@@ -140,7 +140,7 @@ var createColumn = function (table, columnData) {
     }
 
     if (columnData['raw_default'] !== undefined) {
-        column.defaultTo(knex.raw(columnData['raw_default']));
+        column.defaultTo(db.raw(columnData['raw_default']));
     } else if (columnData['default'] !== undefined) {
         column.defaultTo(columnData['default']);
     }
@@ -180,7 +180,7 @@ var createTable = function (db, tableName, tableData, callback) {
         var columns = tableData['columns'];
         if (columns) {
             columns.forEach(function(column){
-                createColumn(table, column);
+                createColumn(db, table, column);
             });
         }
 
@@ -556,7 +556,7 @@ var upgrade = function (db, schemaPath, callback) {
                                             if (column) {
                                                 return db.schema
                                                     .table(_tablePrefix + action['table'], function(table) {
-                                                        createColumn(table, column);
+                                                        createColumn(db, table, column);
                                                     })
                                                     .catch(softThrow);
                                             } else {
