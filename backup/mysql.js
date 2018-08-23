@@ -1,7 +1,5 @@
 "use strict";
 
-var Promise = require('bluebird');
-
 /** @const */
 var NEW_LINE = '\r\n';
 
@@ -54,7 +52,7 @@ var MysqlBackupController = {
      * @param {knex} knex
      * @param {Writable} outputStream
      * @param {MysqlBackupOptions} options
-     * @returns {bluebird}
+     * @returns {Promise}
      */
     generateBackup: function (knex, outputStream, options) {
 
@@ -116,13 +114,13 @@ var MysqlBackupController = {
      * @param {DbObjectType} objectType
      * @param {String} objectName
      * @param {Boolean = false} ifNotExists
-     * @returns {bluebird}
+     * @returns {Promise}
      */
     getObjectCreate: function (knex, objectType, objectName, ifNotExists) {
 
         var sql = 'SHOW CREATE ' + dbObjectTypeFromType(objectType) + ' ' + wrapObjectName(objectName);
 
-        return knex.raw(sql).then(function (resp) {
+        return /**@type Promise*/knex.raw(sql).then(function (resp) {
 
             var rows = resp[0];
             if (!rows.length) {
@@ -172,7 +170,7 @@ var MysqlBackupController = {
      * Exports an object list by objectType
      * @param {knex} knex
      * @param {DbObjectType} objectType
-     * @returns {bluebird}
+     * @returns {Promise}
      */
     getObjectList: function (knex, objectType) {
 
@@ -215,7 +213,7 @@ var MysqlBackupController = {
 
         var results = [];
 
-        return query.then(function (rows) {
+        return /**@type Promise*/query.then(function (rows) {
 
             rows.forEach(function (row) {
 
@@ -231,11 +229,11 @@ var MysqlBackupController = {
      * Tests to see if an object is a view (good for tables)
      * @param {knex} knex
      * @param {String} tableName
-     * @returns {bluebird}
+     * @returns {Promise}
      */
     isView: function (knex, tableName) {
 
-        return knex.select('TABLE_NAME')
+        return /**@type Promise*/knex.select('TABLE_NAME')
             .from('information_schema.VIEWS')
             .where('TABLE_SCHEMA', knex.raw('SCHEMA()'))
             .andWhere('TABLE_NAME', tableName)
@@ -249,7 +247,7 @@ var MysqlBackupController = {
      * @param {knex} knex
      * @param {Writable} outputStream
      * @param {MysqlBackupOptions} options
-     * @returns {bluebird}
+     * @returns {Promise}
      */
     exportRoutines: function (knex, outputStream, options) {
 
@@ -294,7 +292,7 @@ var MysqlBackupController = {
      * @param {knex} knex
      * @param {Writable} outputStream
      * @param {MysqlBackupOptions} options
-     * @returns {bluebird}
+     * @returns {Promise}
      */
     exportTableStructure: function (knex, outputStream, options) {
 
@@ -350,7 +348,7 @@ var MysqlBackupController = {
      * @param {knex} knex
      * @param {Writable} outputStream
      * @param {MysqlBackupOptions} options
-     * @returns {bluebird}
+     * @returns {Promise}
      */
     exportTableData: function (knex, outputStream, options) {
 
@@ -396,11 +394,11 @@ var MysqlBackupController = {
      * @param {knex} knex
      * @param {Writable} outputStream
      * @param {MysqlBackupOptions} options
-     * @returns {bluebird}
+     * @returns {Promise}
      */
     exportTriggers: function (knex, outputStream, options) {
 
-        return knex.select(
+        return /**@type Promise*/knex.select(
             'TRIGGER_NAME AS Trigger',
             'ACTION_TIMING AS Timing',
             'ACTION_ORIENTATION AS Orientation',

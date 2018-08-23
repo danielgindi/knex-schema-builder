@@ -3,7 +3,7 @@
 var Path = require('path'),
     Fs = require('fs'),
     stripJsonComments = require('strip-json-comments'),
-    Bluebird = require('bluebird');
+    promisify = require('util.promisify');
 
 var _tablePrefix = '';
 
@@ -36,11 +36,11 @@ var readJsonFile = function (path, stripComments, callback) {
 
 };
 
-var readJsonFilePromisified = Bluebird.promisify(readJsonFile);
+var readJsonFilePromisified = promisify(readJsonFile);
 
 var promiseWhile = function (condition, action) {
 
-    return new Bluebird(function (resolve, reject) {
+    return new Promise(function (resolve, reject) {
 
         var loop = function () {
 
@@ -48,9 +48,18 @@ var promiseWhile = function (condition, action) {
                 return resolve();
             }
 
-            return Bluebird.cast(action())
-                .then(loop)
-                .catch(reject);
+            let promise;
+            try {
+                promise = action();
+                
+                if (!promise || typeof promise !== 'object' || !('then' in promise)) {
+                    promise = Resolve.resolve(promise);
+                }
+            } catch (ex) {
+                promise = Promise.reject(ex);
+            }
+            
+            return promise.then(loop).catch(reject);
         };
 
         if (setImmediate) {
@@ -375,17 +384,16 @@ var install = function (db, schemaPath, callback) {
         .then(function () {
 
             // Execute schema building
-
-            return Bluebird.each(Object.keys(dbTables), function (tableName) {
+            return Promise.all(Object.keys(dbTables).map(function (tableName) {
                 return createTable(db, tableName, dbTables[tableName]);
-            });
+            }));
 
         })
         .then(function () {
 
             // Execute raw queries
 
-            return Bluebird.each(dbRawQueries, function (rawQuery) {
+            return Promise.all(dbRawQueries.map(function (rawQuery) {
 
                 if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
                     rawQuery = rawQuery.join('\n');
@@ -395,12 +403,12 @@ var install = function (db, schemaPath, callback) {
                     return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix));
                 }
 
-            });
+            }));
 
         })
         .then(function () {
 
-            return Bluebird.each(Object.keys(dbTables), function (tableName) {
+            return Promise.all(Object.keys(dbTables).map(function (tableName) {
 
                 return createTableIndexes(db, tableName, dbTables[tableName])
                     .catch(function (err) {
@@ -410,11 +418,11 @@ var install = function (db, schemaPath, callback) {
 
                     });
 
-            });
+            }));
         })
         .then(function () {
 
-            return Bluebird.each(Object.keys(dbTables), function (tableName) {
+            return Promise.all(Object.keys(dbTables).map(function (tableName) {
 
                 return createTableForeignKeys(db, tableName, dbTables[tableName])
                     .catch(function (err) {
@@ -424,7 +432,7 @@ var install = function (db, schemaPath, callback) {
 
                     });
 
-            });
+            }));
         })
         .then(function () {
 
@@ -497,7 +505,7 @@ var upgrade = function (db, schemaPath, callback) {
                         })
                         .then(function () {
 
-                            return Bluebird.each(upgradeSchema, function (action) {
+                            return Promise.all(upgradeSchema.map(function (action) {
 
                                 var softThrow = function (err) {
                                     if (err && action['ignore_errors']) {
@@ -673,7 +681,7 @@ var upgrade = function (db, schemaPath, callback) {
                                         break;
                                 }
 
-                            });
+                            }));
 
                         })
                         .then(function () {
