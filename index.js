@@ -71,7 +71,7 @@ var startsWith = function (string, prefix) {
 
 /**
  * Description of a table column
- * @typedef {{name: String, type: String, length: Number?, text_type: String?, precision: Number?, scale: Number?, default: *?, raw_default: *?, unique: Boolean?, primary_key: Boolean?, nullable: Boolean?, enum_values: Array<String>?}} TableColumnDescription
+ * @typedef {{name: String, type: String, length: Number?, text_type: String?, precision: Number?, scale: Number?, default: *?, raw_default: *?, unique: Boolean?, primary_key: Boolean?, nullable: Boolean?, enum_values: Array<String>?, collate: String?}} TableColumnDescription
  */
 
 /**
@@ -159,6 +159,10 @@ var createColumn = function (db, table, columnData) {
 
     if (columnData['nullable'] == false) {
         column.notNullable();
+    }
+
+    if (typeof columnData['collate'] === 'string') {
+        column.collate(columnData['collate']);
     }
 
     return column;

@@ -148,7 +148,8 @@ The solution is the `min_version`, which means that this action will only take p
                 "unique": true/false,
                 "primary_key": true/false,
                 "nullable": true/false,
-                "enum_values": ['option1', 'options2', ...]
+                "enum_values": ['option1', 'options2', ...],
+                "collate": String,
               },
               ...
             ],
