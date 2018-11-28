@@ -38,6 +38,16 @@ var readJsonFile = function (path, stripComments, callback) {
 
 var readJsonFilePromisified = promisify(readJsonFile);
 
+const promiseSerial = funcs =>
+  funcs.reduce((promise, func) =>
+    promise.then(result =>
+      func().then(res => {
+        result.push(res);
+        return result;
+      })
+    ), Promise.resolve([])
+  );
+
 var promiseWhile = function (condition, action) {
 
     return new Promise(function (resolve, reject) {
@@ -393,45 +403,45 @@ var install = function (db, schemaPath, callback) {
 
             // Execute raw queries
 
-            return Promise.all(dbRawQueries.map(function (rawQuery) {
-
-                if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
+            return promiseSerial(dbRawQueries.map(function (rawQuery) {
+                return function () {
+                  if (Array.isArray(rawQuery) && typeof (rawQuery[0]) === 'string') {
                     rawQuery = rawQuery.join('\n');
-                }
+                  }
 
-                if (rawQuery && typeof(rawQuery) === 'string') {
+                  if (rawQuery && typeof (rawQuery) === 'string') {
                     return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix));
+                  }
                 }
-
             }));
 
         })
         .then(function () {
 
-            return Promise.all(Object.keys(dbTables).map(function (tableName) {
-
+            return promiseSerial(Object.keys(dbTables).map(function (tableName) {
+              return function () {
                 return createTableIndexes(db, tableName, dbTables[tableName])
-                    .catch(function (err) {
+                  .catch(function (err) {
 
-                        err = 'Failed to create indexes for table ' + tableName + '\n' + err.toString();
-                        throw err;
+                    err = 'Failed to create indexes for table ' + tableName + '\n' + err.toString();
+                    throw err;
 
-                    });
-
+                  });
+              };
             }));
         })
         .then(function () {
 
-            return Promise.all(Object.keys(dbTables).map(function (tableName) {
-
+            return promiseSerial(Object.keys(dbTables).map(function (tableName) {
+              return function () {
                 return createTableForeignKeys(db, tableName, dbTables[tableName])
-                    .catch(function (err) {
+                  .catch(function (err) {
 
-                        err = 'Failed to create foreign keys for table ' + tableName + '\n' + err.toString();
-                        throw err;
+                    err = 'Failed to create foreign keys for table ' + tableName + '\n' + err.toString();
+                    throw err;
 
-                    });
-
+                  });
+              };
             }));
         })
         .then(function () {
@@ -505,182 +515,196 @@ var upgrade = function (db, schemaPath, callback) {
                         })
                         .then(function () {
 
-                            return Promise.all(upgradeSchema.map(function (action) {
-
-                                var softThrow = function (err) {
+                            return promiseSerial(upgradeSchema.map(function (action) {
+                                return function() {
+                                  var softThrow = function (err) {
                                     if (err && action['ignore_errors']) {
-                                        console.log('Ignoring error', err);
-                                        err = null;
-                                    } else if (err) {
-                                        throw err;
+                                      console.log('Ignoring error', err);
+                                      err = null;
                                     }
-                                };
+                                    else if (err) {
+                                      throw err;
+                                    }
+                                  };
 
-                                if (action['min_version'] && action['min_version'] >= originalVersion) {
+                                  if (action['min_version'] && action['min_version'] >= originalVersion) {
                                     return;
-                                }
+                                  }
 
-                                if (action['max_version'] && action['max_version'] <= originalVersion) {
+                                  if (action['max_version'] && action['max_version'] <= originalVersion) {
                                     return;
-                                }
-                                
-                                switch (action['action']) {
+                                  }
+
+                                  switch (action['action']) {
 
                                     case 'execute':
-                                        var rawQuery = action['query'];
-                                        if (Array.isArray(rawQuery) && typeof(rawQuery[0]) === 'string') {
-                                            rawQuery = rawQuery.join('\n');
-                                        }
+                                      var rawQuery = action['query'];
+                                      if (Array.isArray(rawQuery) && typeof (rawQuery[0]) === 'string') {
+                                        rawQuery = rawQuery.join('\n');
+                                      }
 
-                                        return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix)).catch(softThrow);
-                                        break;
+                                      return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix)).catch(softThrow);
+                                      break;
 
                                     case 'createTable':
-                                        if (schema[action['table']]) {
-                                            return createTable(db, action['table'], schema[action['table']]).catch(softThrow);
-                                        } else {
-                                            console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                            softThrow('unknown-table');
-                                        }
-                                        break;
+                                      if (schema[action['table']]) {
+                                        return createTable(db, action['table'], schema[action['table']])
+                                          .catch(softThrow);
+                                      }
+                                      else {
+                                        console.log('Unknown table named `' + action['table'] + '`. Failing...');
+                                        softThrow('unknown-table');
+                                      }
+                                      break;
 
                                     case 'createTableIndexes':
-                                        if (schema[action['table']]) {
-                                            return createTableIndexes(db, action['table'], schema[action['table']]).catch(softThrow);
-                                        } else {
-                                            console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                            softThrow('unknown-table');
-                                        }
-                                        break;
+                                      if (schema[action['table']]) {
+                                        return createTableIndexes(db, action['table'], schema[action['table']])
+                                          .catch(softThrow);
+                                      }
+                                      else {
+                                        console.log('Unknown table named `' + action['table'] + '`. Failing...');
+                                        softThrow('unknown-table');
+                                      }
+                                      break;
 
                                     case 'createTableForeignKeys':
-                                        if (schema[action['table']]) {
-                                            return createTableForeignKeys(db, action['table'], schema[action['table']]).catch(softThrow);
-                                        } else {
-                                            console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                            softThrow('unknown-table');
-                                        }
-                                        break;
+                                      if (schema[action['table']]) {
+                                        return createTableForeignKeys(db, action['table'], schema[action['table']])
+                                          .catch(softThrow);
+                                      }
+                                      else {
+                                        console.log('Unknown table named `' + action['table'] + '`. Failing...');
+                                        softThrow('unknown-table');
+                                      }
+                                      break;
 
                                     case 'addColumn':
-                                        if (schema[action['table']]) {
-                                            var column = schema[action['table']]['columns'].filter(function(item){ return item['name'] === action['column']; })[0];
-                                            if (column) {
-                                                return db.schema
-                                                    .table(_tablePrefix + action['table'], function(table) {
-                                                        createColumn(db, table, column);
-                                                    })
-                                                    .catch(softThrow);
-                                            } else {
-                                                console.log('Unknown column named `' + action['column'] + '`. Failing...');
-                                                softThrow('unknown-column');
-                                            }
-                                        } else {
-                                            console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                            softThrow('unknown-table');
+                                      if (schema[action['table']]) {
+                                        var column = schema[action['table']]['columns'].filter(
+                                          function (item) { return item['name'] === action['column']; })[0];
+                                        if (column) {
+                                          return db.schema
+                                                   .table(_tablePrefix + action['table'], function (table) {
+                                                     createColumn(db, table, column);
+                                                   })
+                                                   .catch(softThrow);
                                         }
-                                        break;
+                                        else {
+                                          console.log('Unknown column named `' + action['column'] + '`. Failing...');
+                                          softThrow('unknown-column');
+                                        }
+                                      }
+                                      else {
+                                        console.log('Unknown table named `' + action['table'] + '`. Failing...');
+                                        softThrow('unknown-table');
+                                      }
+                                      break;
 
                                     case 'renameColumn':
-                                        return db.schema
-                                            .table(_tablePrefix + action['table'], function(table) {
-                                                table.renameColumn(action['from'], action['to']);
-                                            })
-                                            .catch(softThrow);
-                                        break;
+                                      return db.schema
+                                               .table(_tablePrefix + action['table'], function (table) {
+                                                 table.renameColumn(action['from'], action['to']);
+                                               })
+                                               .catch(softThrow);
+                                      break;
 
                                     case 'createIndex':
-                                        return createIndex(db, action['table'], action).catch(softThrow);
-                                        break;
+                                      return createIndex(db, action['table'], action).catch(softThrow);
+                                      break;
 
                                     case 'createForeign':
-                                        return createForeign(db, action['table'], action).catch(softThrow);
-                                        break;
+                                      return createForeign(db, action['table'], action).catch(softThrow);
+                                      break;
 
                                     case 'dropColumn':
-                                        return db.schema
-                                            .table(_tablePrefix + action['table'], function(table) {
-                                                table.dropColumn(action['column']);
-                                            })
-                                            .catch(softThrow);
-                                        break;
+                                      return db.schema
+                                               .table(_tablePrefix + action['table'], function (table) {
+                                                 table.dropColumn(action['column']);
+                                               })
+                                               .catch(softThrow);
+                                      break;
 
                                     case 'dropTable':
-                                        return db.schema.dropTableIfExists(_tablePrefix + action['table']).catch(softThrow);
-                                        break;
+                                      return db.schema.dropTableIfExists(_tablePrefix + action['table'])
+                                               .catch(softThrow);
+                                      break;
 
                                     case 'dropPrimary':
-                                        return db.schema
-                                            .table(_tablePrefix + action['table'], function(table){
-                                                table.dropPrimary();
-                                            })
-                                            .catch(softThrow);
-                                        break;
+                                      return db.schema
+                                               .table(_tablePrefix + action['table'], function (table) {
+                                                 table.dropPrimary();
+                                               })
+                                               .catch(softThrow);
+                                      break;
 
                                     case 'dropIndex':
-                                        return db.schema
-                                            .table(_tablePrefix + action['table'], function(table){
+                                      return db.schema
+                                               .table(_tablePrefix + action['table'], function (table) {
 
-                                                if (action['name']) {
-                                                    table.dropIndex(null, action['name']);
-                                                } else {
-                                                    table.dropIndex(action['column']);
-                                                }
+                                                 if (action['name']) {
+                                                   table.dropIndex(null, action['name']);
+                                                 }
+                                                 else {
+                                                   table.dropIndex(action['column']);
+                                                 }
 
-                                            })
-                                            .catch(softThrow);
-                                        break;
+                                               })
+                                               .catch(softThrow);
+                                      break;
 
                                     case 'dropForeign':
-                                        return db.schema
-                                            .table(_tablePrefix + action['table'], function(table){
+                                      return db.schema
+                                               .table(_tablePrefix + action['table'], function (table) {
 
-                                                if (action['name']) {
-                                                    table.dropForeign(null, action['name']);
-                                                } else {
-                                                    table.dropForeign(action['column']);
-                                                }
+                                                 if (action['name']) {
+                                                   table.dropForeign(null, action['name']);
+                                                 }
+                                                 else {
+                                                   table.dropForeign(action['column']);
+                                                 }
 
-                                            })
-                                            .catch(softThrow);
-                                        break;
+                                               })
+                                               .catch(softThrow);
+                                      break;
 
                                     case 'dropUnique':
-                                        return db.schema
-                                            .table(_tablePrefix + action['table'], function(table){
+                                      return db.schema
+                                               .table(_tablePrefix + action['table'], function (table) {
 
-                                                if (action['name']) {
-                                                    table.dropUnique(null, action['name']);
-                                                } else {
-                                                    table.dropUnique(action['column']);
-                                                }
+                                                 if (action['name']) {
+                                                   table.dropUnique(null, action['name']);
+                                                 }
+                                                 else {
+                                                   table.dropUnique(action['column']);
+                                                 }
 
-                                            })
-                                            .catch(softThrow);
-                                        break;
+                                               })
+                                               .catch(softThrow);
+                                      break;
 
                                     case 'addTimestamps':
-                                        return db.schema
-                                            .table(_tablePrefix + action['table'], function(table){
-                                                table.timestamps();
-                                            })
-                                            .catch(softThrow);
-                                        break;
+                                      return db.schema
+                                               .table(_tablePrefix + action['table'], function (table) {
+                                                 table.timestamps();
+                                               })
+                                               .catch(softThrow);
+                                      break;
 
                                     case 'dropTimestamps':
-                                        return db.schema
-                                            .table(_tablePrefix + action['table'], function(table){
-                                                table.dropTimestamps();
-                                            })
-                                            .catch(softThrow);
-                                        break;
+                                      return db.schema
+                                               .table(_tablePrefix + action['table'], function (table) {
+                                                 table.dropTimestamps();
+                                               })
+                                               .catch(softThrow);
+                                      break;
 
                                     default:
-                                        console.log('Unknown upgrade action `' + action['action'] + '`. Failing...');
-                                        softThrow('unknown-action');
-                                        break;
-                                }
-
+                                      console.log('Unknown upgrade action `' + action['action'] + '`. Failing...');
+                                      softThrow('unknown-action');
+                                      break;
+                                  }
+                                };
                             }));
 
                         })
