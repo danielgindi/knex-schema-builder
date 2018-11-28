@@ -1,34 +1,44 @@
 "use strict";
 
-var Path = require('path'),
-    Fs = require('fs'),
-    stripJsonComments = require('strip-json-comments'),
-    promisify = require('util.promisify');
+const Path = require('path');
+const Fs = require('fs');
+const stripJsonComments = require('strip-json-comments');
+const promisify = require('util.promisify');
+const PromiseHelper = require('./util/promises');
 
-var _tablePrefix = '';
+let _tablePrefix = '';
 
 // A little helper that goes with me everywhere
 
-var readJsonFile = function (path, stripComments, callback) {
+/**
+ * @param {String} path
+ * @param {Boolean} stripComments
+ * @param {function(error: Error, result: *?)}callback
+ */
+const readJsonFile = (path, stripComments, callback) => {
 
     if (callback === undefined && typeof stripComments === 'function') {
-        callback = stripComments;
+        callback = /**@type {function(error: Error, result: *?)}*/stripComments;
         stripComments = false;
     }
 
-    Fs.readFile(path, 'utf8', function (err, json) {
+    Fs.readFile(path, 'utf8', (err, json) => {
         if (err) {
             callback(err);
-        } else {
-            var data = null;
+        }
+        else {
+            let data = null;
+
             try {
                 if (stripComments) {
                     json = stripJsonComments(json);
                 }
                 data = JSON.parse(json);
-            } catch (e) {
+            }
+            catch (e) {
                 err = e;
             }
+
             callback(err, data);
         }
 
@@ -36,57 +46,10 @@ var readJsonFile = function (path, stripComments, callback) {
 
 };
 
-var readJsonFilePromisified = promisify(readJsonFile);
-
-const promiseSerial = funcs =>
-  funcs.reduce((promise, func) =>
-    promise.then(result =>
-      func().then(res => {
-        result.push(res);
-        return result;
-      })
-    ), Promise.resolve([])
-  );
-
-var promiseWhile = function (condition, action) {
-
-    return new Promise(function (resolve, reject) {
-
-        var loop = function () {
-
-            if (!condition()) {
-                return resolve();
-            }
-
-            let promise;
-            try {
-                promise = action();
-                
-                if (!promise || typeof promise !== 'object' || !('then' in promise)) {
-                    promise = Resolve.resolve(promise);
-                }
-            } catch (ex) {
-                promise = Promise.reject(ex);
-            }
-            
-            return promise.then(loop).catch(reject);
-        };
-
-        if (setImmediate) {
-            setImmediate(loop);
-        } else {
-            process.nextTick(loop);
-        }
-
-    });
-};
-
-var startsWith = function (string, prefix) {
-    if (prefix === undefined || prefix === null) return false;
-    if (typeof prefix !== 'string') prefix = prefix.toString();
-    if (string.length < prefix.length) return false;
-    return string.substr(0, prefix.length) === prefix;
-};
+/**
+ * @type {function(path: String, stripComments: Boolean):Promise<*>}
+ */
+const readJsonFilePromisified = promisify(readJsonFile);
 
 /**
  * Description of a table column
@@ -108,876 +71,903 @@ var startsWith = function (string, prefix) {
  * @typedef {{columns: Array<TableColumnDescription>, indexes: Array<TableIndexDescription>?, foreign_keys: Array<TableForeignKeyDescription>?, primary_key: <Array<String>|String>?, engine: String?, charset: String?, collate: String?, timestamps: Boolean?}} TableDescription
  */
 
+/** */
+module.exports = class KnexSchemaBuilder {
+    // noinspection JSUnusedGlobalSymbols
+    /**
+     * Sets a generic table prefix for all table creations
+     * @param {String} prefix - A prefix for tables
+     * @param {function(error:?)?} callback - optional callback
+     * @returns {Promise<Boolean>|*}
+     */
+    static setTablePrefix(prefix, callback) {
 
-/**
- * Manually create a column in a table
- * This does not create the indexes or foreign keys - they are created in different calls.
- * @param {Object} db A knex instance
- * @param {Object} table A knex table instance (inside a "table" call)
- * @param {TableColumnDescription} columnData The column data
- * @returns {Object} knex column
- */
-var createColumn = function (db, table, columnData) {
+        _tablePrefix = prefix == null ? '' : (prefix + '');
 
-    var name = columnData['name'];
-    if (!name) {
-        console.log('The column ' + (JSON.stringify(columnData)) + ' is missing a name!');
-        throw 'column-missing-name';
-    }
-    var type = columnData['type'];
-    if (!type) {
-        console.log('The column ' + (name ? name : JSON.stringify(columnData)) + ' is missing a type!');
-        throw 'column-missing-type';
-    }
-
-    var unsigned = startsWith(type, 'unsigned ');
-    if (unsigned) {
-        type = type.substr(9);
-    }
-
-    var column;
-    if (type[0] === ':') {
-        column = table.specificType(name, type.substr(1));
-    } else if (type === 'text') {
-        column = table.text(name, columnData['text_type']);
-    } else if (type === 'string' || type === 'varchar' || type === 'char') {
-        column = table[type](name, columnData['length']);
-    } else if (type === 'float' || type === 'double' || type === 'decimal') {
-        column = table[type](name, columnData['precision'], columnData['scale']);
-    } else if (type === 'timestamp' || type === 'timestamptz') {
-        column = table.timestamp(name, type !== 'timestamptz');
-    } else if (type === 'enu' || type === 'enum') {
-        column = table.enu(name, columnData['enum_values']);
-    } else if (type === 'json' || type === 'jsonb') {
-        column = table.json(name, type === 'jsonb');
-    } else {
-        column = table[type](name);
-    }
-
-    if (unsigned) {
-        column.unsigned();
-    }
-
-    if (columnData['raw_default'] !== undefined) {
-        column.defaultTo(db.raw(columnData['raw_default']));
-    } else if (columnData['default'] !== undefined) {
-        column.defaultTo(columnData['default']);
-    }
-
-    if (columnData['unique']) {
-        column.unique();
-    }
-
-    if (columnData['primary_key']) {
-        column.primary();
-    }
-
-    if (columnData['unsigned']) {
-        column.unsigned();
-    }
-
-    if (columnData['nullable'] == false) {
-        column.notNullable();
-    }
-
-    if (typeof columnData['collate'] === 'string') {
-        column.collate(columnData['collate']);
-    }
-
-    return column;
-};
-
-/**
- * Manually create the table from a table description object.
- * This does not create the indexes or foreign keys - they are created in different calls.
- * @param {Object} db A knex instance
- * @param {String} tableName The name of the table to create
- * @param {TableDescription} tableData The table data
- * @param {function(error:?)?} callback
- * @returns {Promise.<T>|*}
- */
-var createTable = function (db, tableName, tableData, callback) {
-
-    var table = db.schema.createTable(_tablePrefix + tableName, function(table) {
-
-        var columns = tableData['columns'];
-        if (columns) {
-            columns.forEach(function(column){
-                createColumn(db, table, column);
+        if (typeof callback === 'function') {
+            process.nextTick(() => {
+                callback(null, _tablePrefix);
             });
         }
 
-        var primaryKey = tableData['primary_key'];
-        if (primaryKey) {
-            if (primaryKey instanceof Array) {
-                table.primary(tableData['primary_key'])
-            } else {
-                table.primary([primaryKey]);
-            }
+        return new Promise((resolve/*, reject*/) => {
+            resolve(_tablePrefix);
+        });
+    }
+
+    /**
+     * Determine if a schema upgrade is required
+     * @param {Object} db A knex instance
+     * @param {String} schemaPath Path to where the schema files reside
+     * @param {function(error:?, isUpgradeNeeded:Boolean?)?} callback - optional callback
+     * @returns {Promise<Boolean>|*}
+     */
+    static isUpgradeNeeded(db, schemaPath, callback) {
+
+        const promise = KnexSchemaBuilder.getCurrentDbVersion(db)
+            .then(dbVer =>
+                KnexSchemaBuilder.getLatestDbVersion(schemaPath)
+                    .then(latestVersion => dbVer < latestVersion));
+
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(ret => {callback(null, ret)});
         }
 
-        if (tableData['timestamps']) {
-            table.timestamps();
+        return promise;
+    }
+
+    // noinspection JSUnusedGlobalSymbols
+    /**
+     * Determine if a full schema installation is required
+     * @param {Object} db A knex instance
+     * @param {String} schemaPath Path to where the schema files reside
+     * @param {function(error:?, isInstallNeeded:Boolean?)?} callback - optional callback
+     * @returns {Promise<Boolean>|*}
+     */
+    static isInstallNeeded(db, schemaPath, callback) {
+
+        const promise = KnexSchemaBuilder.getCurrentDbVersion(db)
+            .then(version => version == null);
+
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(ret => {callback(null, ret)});
         }
 
-    });
-
-    ['engine', 'charset', 'collate'].forEach(function(func){
-        if (tableData[func]) {
-            table[func](tableData[func]);
-        }
-    });
-
-    if (typeof callback === 'function') {
-        table.asCallback(callback);
+        return promise;
     }
 
-    return table;
-};
+    /**
+     * Kick off the installation routine.
+     * @param {Object} db A knex instance
+     * @param {String} schemaPath Path to where the schema files reside
+     * @param {function(error:?)?} callback - optional callback
+     * @returns {Promise<Number>|*}
+     */
+    static install(db, schemaPath, callback) {
 
-/**
- * Manually create the indexes from a table description object.
- * @param {Object} db A knex instance
- * @param {String} tableName The name of the table to create
- * @param {TableDescription} tableData The table data
- * @param {function(error:?)?} callback
- * @returns {Promise.<T>|*}
- */
-var createTableIndexes = function (db, tableName, tableData, callback) {
+        let dbTables = {}, dbRawQueries = [];
 
-    var promise = db.schema
-        .table(_tablePrefix + tableName, function(table) {
+        const promise = readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true)
+            .then(schema => {
 
-            (tableData['indexes'] || []).forEach(function (index) {
-                createIndex_inner(table, index);
-            });
-
-        });
-
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
-    }
-
-    return promise;
-};
-
-/**
- * Manually create an index
- * @param {Object} db A knex instance
- * @param {String} tableName The name of the table to create
- * @param {TableIndexDescription} indexData The index data
- * @param {function(error:?)?} callback
- * @returns {Promise.<T>|*}
- */
-var createIndex = function (db, tableName, indexData, callback) {
-
-    var promise = db.schema
-        .table(_tablePrefix + tableName, function(table) {
-            createIndex_inner(table, indexData);
-        });
-
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
-    }
-
-    return promise;
-};
-
-/**
- * Inner implementation for index creation
- * @param {Object} table A knex table closure
- * @param {TableIndexDescription} indexData The index data
- */
-var createIndex_inner = function (table, indexData) {
-    var columns = indexData['columns'];
-    columns = (columns && !(columns instanceof Array)) ? [columns] : columns;
-    if (indexData['unique']) {
-        table.unique(columns, indexData['name']);
-    } else {
-        table.index(columns, indexData['name']);
-    }
-};
-
-/**
- * Manually create the foreign keys from a table description object.
- * @param {Object} db A knex instance
- * @param {String} tableName The name of the table to create
- * @param {TableDescription} tableData The table data
- * @param {function(error:?)?} callback
- * @returns {Promise.<T>|*}
- */
-var createTableForeignKeys = function (db, tableName, tableData, callback) {
-
-    var promise = db.schema
-        .table(_tablePrefix + tableName, function(table) {
-
-            (tableData['foreign_keys'] || []).forEach(function (foreignKeyData) {
-                createForeign_inner(table, foreignKeyData);
-            });
-
-        });
-
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
-    }
-
-    return promise;
-};
-
-/**
- * Manually create an foreign key
- * @param {Object} db A knex instance
- * @param {String} tableName The name of the table to create
- * @param {TableForeignKeyDescription} foreignKey The foreign key data
- * @param {function(error:?)?} callback
- * @returns {Promise.<T>|*}
- */
-var createForeign = function (db, tableName, foreignKey, callback) {
-
-    var promise = db.schema
-        .table(_tablePrefix + tableName, function(table) {
-            createForeign_inner(table, foreignKey);
-        });
-
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
-    }
-
-    return promise;
-};
-
-/**
- * Inner implementation for foreign key creation
- * @param {Object} table A knex table closure
- * @param {TableForeignKeyDescription} foreignKey The foreign key data
- */
-var createForeign_inner = function (table, foreignKey) {
-    var columns = foreignKey['columns'],
-        foreigns = foreignKey['foreign_columns'];
-    columns = (columns && !(columns instanceof Array)) ? [columns] : columns;
-    foreigns = (foreigns && !(foreigns instanceof Array)) ? [foreigns] : foreigns;
-    var foreign = table.foreign(columns).references(foreigns).inTable(_tablePrefix + foreignKey['foreign_table']);
-    if (foreignKey['on_update']) {
-        foreign.onUpdate(foreignKey['on_update']);
-    }
-    if (foreignKey['on_delete']) {
-        foreign.onDelete(foreignKey['on_delete']);
-    }
-};
-
-/**
- * Kick off the installation routine.
- * @param {Object} db A knex instance
- * @param {String} schemaPath Path to where the schema files reside
- * @param {function(error:?)?} callback
- * @returns {Promise.<Number>|*}
- */
-var install = function (db, schemaPath, callback) {
-
-    var dbTables = {}, dbRawQueries = [];
-
-    var promise = readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true)
-        .then(function (schema) {
-
-            if (schema['schema'] && !Array.isArray(schema['schema']['columns'])) {
-
-                dbTables = schema['schema'];
-                dbRawQueries = schema['raw'] || [];
-
-            } else {
-
-                dbTables = schema;
-
-            }
-
-        })
-        .then(function () {
-
-            // Execute schema building
-            return Promise.all(Object.keys(dbTables).map(function (tableName) {
-                return createTable(db, tableName, dbTables[tableName]);
-            }));
-
-        })
-        .then(function () {
-
-            // Execute raw queries
-
-            return promiseSerial(dbRawQueries.map(function (rawQuery) {
-                return function () {
-                  if (Array.isArray(rawQuery) && typeof (rawQuery[0]) === 'string') {
-                    rawQuery = rawQuery.join('\n');
-                  }
-
-                  if (rawQuery && typeof (rawQuery) === 'string') {
-                    return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix));
-                  }
+                if (schema['schema'] && !Array.isArray(schema['schema']['columns'])) {
+                    dbTables = schema['schema'];
+                    dbRawQueries = schema['raw'] || [];
                 }
-            }));
+                else {
+                    dbTables = schema;
+                }
+            })
+            .then(() => {
+                // Execute schema building
+                return Promise.all(
+                    Object.keys(dbTables)
+                          .map(tableName => KnexSchemaBuilder.createTable(db, tableName, dbTables[tableName]))
+                );
+            })
+            .then(() => {
+                // Execute raw queries
 
-        })
-        .then(function () {
+                return PromiseHelper.serial(dbRawQueries.map(rawQuery => () => {
+                    if (Array.isArray(rawQuery) && typeof (rawQuery[0]) === 'string') {
+                        rawQuery = rawQuery.join('\n');
+                    }
 
-            return promiseSerial(Object.keys(dbTables).map(function (tableName) {
-              return function () {
-                return createTableIndexes(db, tableName, dbTables[tableName])
-                  .catch(function (err) {
+                    if (rawQuery && typeof (rawQuery) === 'string') {
+                        return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix));
+                    }
+                }));
+            })
+            .then(() =>
+                PromiseHelper.serial(
+                    Object.keys(dbTables)
+                          .map(tableName =>
+                              () => KnexSchemaBuilder.createTableIndexes(db, tableName,
+                                  dbTables[tableName])
+                                  .catch(err => {
 
-                    err = 'Failed to create indexes for table ' + tableName + '\n' + err.toString();
-                    throw err;
+                                      err = 'Failed to create indexes for table ' + tableName + '\n' + err.toString();
+                                      throw err;
 
-                  });
-              };
-            }));
-        })
-        .then(function () {
+                                  })
+                          )
+                )
+            )
+            .then(() =>
+                PromiseHelper.serial(
+                    Object.keys(dbTables)
+                          .map(tableName =>
+                              () => KnexSchemaBuilder.createTableForeignKeys(db, tableName,
+                                  dbTables[tableName])
+                                  .catch(err => {
 
-            return promiseSerial(Object.keys(dbTables).map(function (tableName) {
-              return function () {
-                return createTableForeignKeys(db, tableName, dbTables[tableName])
-                  .catch(function (err) {
+                                      err = 'Failed to create foreign keys for table ' + tableName + '\n' + err.toString();
+                                      throw err;
 
-                    err = 'Failed to create foreign keys for table ' + tableName + '\n' + err.toString();
-                    throw err;
+                                  })
+                          )
+                )
+            )
+            .then(() =>
+                KnexSchemaBuilder.getLatestDbVersion(schemaPath)
+                    .then(version => KnexSchemaBuilder.setCurrentDbVersion(db, version))
+            );
 
-                  });
-              };
-            }));
-        })
-        .then(function () {
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(ret => {callback(null, ret)});
+        }
 
-            return getLatestDbVersion(schemaPath)
-                .then(function (version) {
-                    return setCurrentDbVersion(db, version);
-                });
-
-        });
-
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
+        return promise;
     }
 
-    return promise;
-};
+    /**
+     * Kick off the upgrade routine.
+     * This will check the current db schema version against the latest, and run the appropriate upgrade routines.
+     * If it detects that the db is not even installed (no version specified), then the returned error will be 'empty-database' (String)
+     * @param {Object} db A knex instance
+     * @param {String} schemaPath Path to where the schema files reside
+     * @param {function(error:?)?} callback - optional callback
+     * @returns {Promise<void>|*}
+     */
+    static upgrade(db, schemaPath, callback) {
 
-/**
- * Kick off the upgrade routine.
- * This will check the current db schema version against the latest, and run the appropriate upgrade routines.
- * If it detects that the db is not even installed (no version specified), then the returned error will be 'empty-database' (String)
- * @param {Object} db A knex instance
- * @param {String} schemaPath Path to where the schema files reside
- * @param {function(error:?)?} callback
- * @returns {Promise.<T>|*}
- */
-var upgrade = function (db, schemaPath, callback) {
+        let schema, currentVersion, latestVersion, originalVersion, saveVersion;
 
-    var schema, currentVersion, latestVersion, originalVersion, saveVersion;
-
-    var promise = readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true)
-        .then(function (schemaJson) {
-
-            if (schemaJson['schema'] && !Array.isArray(schemaJson['schema']['columns'])) {
-                schemaJson = schemaJson['schema'];
-            }
-
-            schema = schemaJson;
-
-        })
-        .then(function () {
-
-            return getCurrentDbVersion(db)
-                .then(function (version) {
+        const promise = readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true)
+            .then(schemaJson => {
+                if (schemaJson['schema'] && !Array.isArray(schemaJson['schema']['columns'])) {
+                    schemaJson = schemaJson['schema'];
+                }
+                schema = schemaJson;
+            })
+            .then(() => KnexSchemaBuilder.getCurrentDbVersion(db)
+                .then(version => {
                     originalVersion = currentVersion = version;
 
-                    return getLatestDbVersion(schemaPath);
+                    return KnexSchemaBuilder.getLatestDbVersion(schemaPath);
                 })
-                .then(function (version) {
+                .then(version => {
                     latestVersion = version;
-                });
+                })
+            )
+            .then(function () {
 
-        })
-        .then(function () {
+                // While the current version hasn't yet reached the latest version
+                return PromiseHelper.while(
+                    () => currentVersion < latestVersion,
+                    () => {
 
-            // While the current version hasn't yet reached the latest version
-            return promiseWhile(
-                function () { return currentVersion < latestVersion; },
-                function () {
+                        // Load the correct upgrade.####.json file, then perform the relevant actions.
 
-                    // Load the correct upgrade.####.json file, then perform the relevant actions.
+                        let hasUpgradeSchema = false;
+                        let upgradeSchema;
 
-                    var hasUpgradeSchema = false;
-                    var upgradeSchema;
-
-                    return readJsonFilePromisified(Path.join(schemaPath, 'upgrade.' + (currentVersion + 1) + '.json'), true)
-                        .then(function (schema) {
-                            upgradeSchema = schema;
-                            hasUpgradeSchema = true;
-                        })
-                        .then(function () {
-
-                            return promiseSerial(upgradeSchema.map(function (action) {
-                                return function() {
-                                  var softThrow = function (err) {
+                        return readJsonFilePromisified(Path.join(schemaPath, 'upgrade.' + (currentVersion + 1) + '.json'),
+                            true)
+                            .then(schema => {
+                                upgradeSchema = schema;
+                                hasUpgradeSchema = true;
+                            })
+                            .then(() => PromiseHelper.serial(upgradeSchema.map(action => () => {
+                                const softThrow = err => {
                                     if (err && action['ignore_errors']) {
-                                      console.log('Ignoring error', err);
-                                      err = null;
+                                        console.log('Ignoring error', err);
+                                        err = null;
                                     }
                                     else if (err) {
-                                      throw err;
+                                        throw err;
                                     }
-                                  };
+                                };
 
-                                  if (action['min_version'] && action['min_version'] >= originalVersion) {
+                                if (action['min_version'] && action['min_version'] >= originalVersion) {
                                     return;
-                                  }
+                                }
 
-                                  if (action['max_version'] && action['max_version'] <= originalVersion) {
+                                if (action['max_version'] && action['max_version'] <= originalVersion) {
                                     return;
-                                  }
+                                }
 
-                                  switch (action['action']) {
+                                switch (action['action']) {
 
                                     case 'execute':
-                                      var rawQuery = action['query'];
-                                      if (Array.isArray(rawQuery) && typeof (rawQuery[0]) === 'string') {
-                                        rawQuery = rawQuery.join('\n');
-                                      }
+                                        let rawQuery = action['query'];
+                                        if (Array.isArray(rawQuery) && typeof (rawQuery[0]) === 'string') {
+                                            rawQuery = rawQuery.join('\n');
+                                        }
 
-                                      return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix)).catch(softThrow);
-                                      break;
+                                        return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix))
+                                                 .catch(softThrow);
 
                                     case 'createTable':
-                                      if (schema[action['table']]) {
-                                        return createTable(db, action['table'], schema[action['table']])
-                                          .catch(softThrow);
-                                      }
-                                      else {
-                                        console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                        softThrow('unknown-table');
-                                      }
-                                      break;
-
-                                    case 'createTableIndexes':
-                                      if (schema[action['table']]) {
-                                        return createTableIndexes(db, action['table'], schema[action['table']])
-                                          .catch(softThrow);
-                                      }
-                                      else {
-                                        console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                        softThrow('unknown-table');
-                                      }
-                                      break;
-
-                                    case 'createTableForeignKeys':
-                                      if (schema[action['table']]) {
-                                        return createTableForeignKeys(db, action['table'], schema[action['table']])
-                                          .catch(softThrow);
-                                      }
-                                      else {
-                                        console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                        softThrow('unknown-table');
-                                      }
-                                      break;
-
-                                    case 'addColumn':
-                                      if (schema[action['table']]) {
-                                        var column = schema[action['table']]['columns'].filter(
-                                          function (item) { return item['name'] === action['column']; })[0];
-                                        if (column) {
-                                          return db.schema
-                                                   .table(_tablePrefix + action['table'], function (table) {
-                                                     createColumn(db, table, column);
-                                                   })
-                                                   .catch(softThrow);
+                                        if (schema[action['table']]) {
+                                            return KnexSchemaBuilder.createTable(db, action['table'], schema[action['table']])
+                                                .catch(softThrow);
                                         }
                                         else {
-                                          console.log('Unknown column named `' + action['column'] + '`. Failing...');
-                                          softThrow('unknown-column');
+                                            console.log(
+                                                'Unknown table named `' + action['table'] + '`. Failing...');
+                                            softThrow('unknown-table');
                                         }
-                                      }
-                                      else {
-                                        console.log('Unknown table named `' + action['table'] + '`. Failing...');
-                                        softThrow('unknown-table');
-                                      }
-                                      break;
+                                        break;
+
+                                    case 'createTableIndexes':
+                                        if (schema[action['table']]) {
+                                            return KnexSchemaBuilder.createTableIndexes(db, action['table'],
+                                                schema[action['table']])
+                                                .catch(softThrow);
+                                        }
+                                        else {
+                                            console.log(
+                                                'Unknown table named `' + action['table'] + '`. Failing...');
+                                            softThrow('unknown-table');
+                                        }
+                                        break;
+
+                                    case 'createTableForeignKeys':
+                                        if (schema[action['table']]) {
+                                            return KnexSchemaBuilder.createTableForeignKeys(db, action['table'],
+                                                schema[action['table']])
+                                                .catch(softThrow);
+                                        }
+                                        else {
+                                            console.log(
+                                                'Unknown table named `' + action['table'] + '`. Failing...');
+                                            softThrow('unknown-table');
+                                        }
+                                        break;
+
+                                    case 'addColumn':
+                                        if (schema[action['table']]) {
+                                            const column = schema[action['table']]['columns']
+                                                .filter(item => item['name'] === action['column'])[0];
+                                            if (column) {
+                                                return db.schema
+                                                         .table(_tablePrefix + action['table'], table => {
+                                                             KnexSchemaBuilder.createColumn(db, table, column);
+                                                         })
+                                                         .catch(softThrow);
+                                            }
+                                            else {
+                                                console.log(
+                                                    'Unknown column named `' + action['column'] + '`. Failing...');
+                                                softThrow('unknown-column');
+                                            }
+                                        }
+                                        else {
+                                            console.log(
+                                                'Unknown table named `' + action['table'] + '`. Failing...');
+                                            softThrow('unknown-table');
+                                        }
+                                        break;
 
                                     case 'renameColumn':
-                                      return db.schema
-                                               .table(_tablePrefix + action['table'], function (table) {
-                                                 table.renameColumn(action['from'], action['to']);
-                                               })
-                                               .catch(softThrow);
-                                      break;
+                                        return db.schema
+                                                 .table(_tablePrefix + action['table'], table => {
+                                                     // noinspection JSUnresolvedFunction
+                                                     table.renameColumn(action['from'], action['to']);
+                                                 })
+                                                 .catch(softThrow);
 
                                     case 'createIndex':
-                                      return createIndex(db, action['table'], action).catch(softThrow);
-                                      break;
+                                        return KnexSchemaBuilder.createIndex(db, action['table'], action).catch(softThrow);
 
                                     case 'createForeign':
-                                      return createForeign(db, action['table'], action).catch(softThrow);
-                                      break;
+                                        return KnexSchemaBuilder.createForeign(db, action['table'], action).catch(softThrow);
 
                                     case 'dropColumn':
-                                      return db.schema
-                                               .table(_tablePrefix + action['table'], function (table) {
-                                                 table.dropColumn(action['column']);
-                                               })
-                                               .catch(softThrow);
-                                      break;
+                                        return db.schema
+                                                 .table(_tablePrefix + action['table'], table => {
+                                                     // noinspection JSUnresolvedFunction
+                                                     table.dropColumn(action['column']);
+                                                 })
+                                                 .catch(softThrow);
 
                                     case 'dropTable':
-                                      return db.schema.dropTableIfExists(_tablePrefix + action['table'])
-                                               .catch(softThrow);
-                                      break;
+                                        // noinspection JSUnresolvedFunction
+                                        return db.schema.dropTableIfExists(_tablePrefix + action['table'])
+                                                 .catch(softThrow);
 
                                     case 'dropPrimary':
-                                      return db.schema
-                                               .table(_tablePrefix + action['table'], function (table) {
-                                                 table.dropPrimary();
-                                               })
-                                               .catch(softThrow);
-                                      break;
+                                        return db.schema
+                                                 .table(_tablePrefix + action['table'], table => {
+                                                     // noinspection JSUnresolvedFunction
+                                                     table.dropPrimary();
+                                                 })
+                                                 .catch(softThrow);
 
                                     case 'dropIndex':
-                                      return db.schema
-                                               .table(_tablePrefix + action['table'], function (table) {
+                                        return db.schema
+                                                 .table(_tablePrefix + action['table'], table => {
 
-                                                 if (action['name']) {
-                                                   table.dropIndex(null, action['name']);
-                                                 }
-                                                 else {
-                                                   table.dropIndex(action['column']);
-                                                 }
+                                                     if (action['name']) {
+                                                         // noinspection JSUnresolvedFunction
+                                                         table.dropIndex(null, action['name']);
+                                                     }
+                                                     else {
+                                                         // noinspection JSUnresolvedFunction
+                                                         table.dropIndex(action['column']);
+                                                     }
 
-                                               })
-                                               .catch(softThrow);
-                                      break;
+                                                 })
+                                                 .catch(softThrow);
 
                                     case 'dropForeign':
-                                      return db.schema
-                                               .table(_tablePrefix + action['table'], function (table) {
+                                        return db.schema
+                                                 .table(_tablePrefix + action['table'], table => {
 
-                                                 if (action['name']) {
-                                                   table.dropForeign(null, action['name']);
-                                                 }
-                                                 else {
-                                                   table.dropForeign(action['column']);
-                                                 }
+                                                     if (action['name']) {
+                                                         // noinspection JSUnresolvedFunction
+                                                         table.dropForeign(null, action['name']);
+                                                     }
+                                                     else {
+                                                         // noinspection JSUnresolvedFunction
+                                                         table.dropForeign(action['column']);
+                                                     }
 
-                                               })
-                                               .catch(softThrow);
-                                      break;
+                                                 })
+                                                 .catch(softThrow);
 
                                     case 'dropUnique':
-                                      return db.schema
-                                               .table(_tablePrefix + action['table'], function (table) {
+                                        return db.schema
+                                                 .table(_tablePrefix + action['table'], table => {
 
-                                                 if (action['name']) {
-                                                   table.dropUnique(null, action['name']);
-                                                 }
-                                                 else {
-                                                   table.dropUnique(action['column']);
-                                                 }
+                                                     if (action['name']) {
+                                                         // noinspection JSUnresolvedFunction
+                                                         table.dropUnique(null, action['name']);
+                                                     }
+                                                     else {
+                                                         // noinspection JSUnresolvedFunction
+                                                         table.dropUnique(action['column']);
+                                                     }
 
-                                               })
-                                               .catch(softThrow);
-                                      break;
+                                                 })
+                                                 .catch(softThrow);
 
                                     case 'addTimestamps':
-                                      return db.schema
-                                               .table(_tablePrefix + action['table'], function (table) {
-                                                 table.timestamps();
-                                               })
-                                               .catch(softThrow);
-                                      break;
+                                        return db.schema
+                                                 .table(_tablePrefix + action['table'], table => {
+                                                     // noinspection JSValidateTypes
+                                                     table.timestamps();
+                                                 })
+                                                 .catch(softThrow);
 
                                     case 'dropTimestamps':
-                                      return db.schema
-                                               .table(_tablePrefix + action['table'], function (table) {
-                                                 table.dropTimestamps();
-                                               })
-                                               .catch(softThrow);
-                                      break;
+                                        return db.schema
+                                                 .table(_tablePrefix + action['table'], table => {
+                                                     // noinspection JSUnresolvedFunction
+                                                     table.dropTimestamps();
+                                                 })
+                                                 .catch(softThrow);
 
                                     default:
-                                      console.log('Unknown upgrade action `' + action['action'] + '`. Failing...');
-                                      softThrow('unknown-action');
-                                      break;
-                                  }
-                                };
-                            }));
-
-                        })
-                        .then(function () {
-                            currentVersion++;
-                        })
-                        .catch(function (err) {
-
-                            if (!hasUpgradeSchema) {
-                                if (err instanceof SyntaxError) {
-                                    console.log('Upgrade schema for version ' + (currentVersion + 1) +
-                                        ' (upgrade.' + (currentVersion + 1) + '.json)' +
-                                        ' contains invalid JSON. Please correct it and try again.');
-                                } else {
-                                    console.log('Upgrade schema for version ' + (currentVersion + 1) +
-                                        ' (upgrade.' + (currentVersion + 1) + '.json)' +
-                                        ' not found, skipping...');
-                                    err = false;
+                                        console.log(
+                                            'Unknown upgrade action `' + action['action'] + '`. Failing...');
+                                        softThrow('unknown-action');
+                                        break;
                                 }
-                            }
+                            })))
+                            .then(() => {
+                                currentVersion++;
+                            })
+                            .catch(err => {
 
-                            if (err) {
-                                throw err;
-                            }
-                        });
+                                if (!hasUpgradeSchema) {
+                                    if (err instanceof SyntaxError) {
+                                        console.log('Upgrade schema for version ' + (currentVersion + 1) +
+                                            ' (upgrade.' + (currentVersion + 1) + '.json)' +
+                                            ' contains invalid JSON. Please correct it and try again.');
+                                    }
+                                    else {
+                                        console.log('Upgrade schema for version ' + (currentVersion + 1) +
+                                            ' (upgrade.' + (currentVersion + 1) + '.json)' +
+                                            ' not found, skipping...');
+                                        err = false;
+                                    }
+                                }
 
-                })
-                .then(function () {
-                    saveVersion = latestVersion;
-                })
-                .catch(function (err) {
-                    saveVersion = currentVersion;
+                                if (err) {
+                                    throw err;
+                                }
+                            });
 
-                    // Rethrow that error
-                    throw err;
-                });
+                    })
+                    .then(() => {
+                        saveVersion = latestVersion;
+                    })
+                    .catch(err => {
+                        saveVersion = currentVersion;
 
-        })
-        .then(function () {
-            return setCurrentDbVersion(db, saveVersion);
-        })
-        .catch(function (err) {
-
-            if (originalVersion === undefined) {
-                throw 'empty-database';
-            } else {
-                // Save the point to which we've successfully made it...
-                return setCurrentDbVersion(db, saveVersion)
-                    .then(function () {
                         // Rethrow that error
                         throw err;
                     });
+
+            })
+            .then(() => KnexSchemaBuilder.setCurrentDbVersion(db, saveVersion))
+            .then(() => undefined)
+            .catch(err => {
+
+                if (originalVersion === undefined) {
+                    throw 'empty-database';
+                }
+                else {
+                    // Save the point to which we've successfully made it...
+                    return KnexSchemaBuilder.setCurrentDbVersion(db, saveVersion)
+                        .then(() => {
+                            // Rethrow that error
+                            throw err;
+                        });
+                }
+
+            });
+
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(() => {callback(null)});
+        }
+
+        return promise;
+    }
+
+    /**
+     * Retrieves the schema version of the current db
+     * @param {Object} db A knex instance
+     * @param {function(error:?, version:Number)?} callback - optional callback
+     * @returns {Promise<Number?>|*}
+     */
+    static getCurrentDbVersion(db, callback) {
+
+        // noinspection JSUnresolvedFunction
+        const promise = KnexSchemaBuilder.ensureSchemaGlobalsExist(db)
+            .then(() => db.select('value')
+                          .from('schema_globals')
+                          .where('key', _tablePrefix + 'db_version')
+                          .limit(1)
+                          .then(rows => (rows && rows.length) ? parseFloat(rows[0]['value']) : null));
+
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(ret => {callback(null, ret)});
+        }
+
+        return promise;
+    }
+
+    /**
+     * Sets the schema version of the current db
+     * @param {Object} db A knex instance
+     * @param {Number} version A version, as a whole number
+     * @param {function(error:?, version:Number)?} callback - optional callback
+     * @returns {Promise<Number>|*}
+     */
+    static setCurrentDbVersion(db, version, callback) {
+
+        const promise = KnexSchemaBuilder.getCurrentDbVersion(db)
+            .then(currentDbVersion => {
+                if (currentDbVersion == null) {
+                    // noinspection JSUnresolvedFunction
+                    return db
+                        .insert({'value': version, 'key': _tablePrefix + 'db_version'})
+                        .into('schema_globals')
+                        .then(() => version);
+
+                }
+                else {
+                    // noinspection JSUnresolvedFunction
+                    return db
+                        .table('schema_globals')
+                        .update('value', version)
+                        .where('key', _tablePrefix + 'db_version')
+                        .then(() => version);
+                }
+            });
+
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(ret => {callback(null, ret)});
+        }
+
+        return promise;
+    }
+
+    /**
+     * Retrieves the latest schema version which is specified in version.json
+     * @param {String} schemaPath Path to where the schema files reside
+     * @param {function(error:?, version:Number?)?} callback - optional callback
+     * @returns {Promise<Number>|*}
+     */
+    static getLatestDbVersion(schemaPath, callback) {
+
+        const promise = readJsonFilePromisified(Path.join(schemaPath, 'version.json'), true)
+            .then(data => {
+                if (data) {
+                    return data['version'];
+                }
+
+                return null;
+            });
+
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(ret => {callback(null, ret)});
+        }
+
+        return promise;
+    }
+
+    /**
+     * Manually create a column in a table
+     * This does not create the indexes or foreign keys - they are created in different calls.
+     * @param {Object} db A knex instance
+     * @param {Object} table A knex table instance (inside a "table" call)
+     * @param {TableColumnDescription} columnData The column data
+     * @returns {Object} knex column
+     */
+    static createColumn(db, table, columnData) {
+
+        const name = columnData['name'];
+        if (!name) {
+            console.log('The column ' + (JSON.stringify(columnData)) + ' is missing a name!');
+            throw 'column-missing-name';
+        }
+        let type = columnData['type'];
+        if (!type) {
+            console.log('The column ' + (name ? name : JSON.stringify(columnData)) + ' is missing a type!');
+            throw 'column-missing-type';
+        }
+
+        const unsigned = type.startsWith('unsigned ');
+        if (unsigned) {
+            type = type.substr(9);
+        }
+
+        let column;
+        if (type[0] === ':') {
+            // noinspection JSUnresolvedFunction
+            column = table.specificType(name, type.substr(1));
+        }
+        else if (type === 'text') {
+            column = table.text(name, columnData['text_type']);
+        }
+        else if (type === 'string' || type === 'varchar' || type === 'char') {
+            column = table[type](name, columnData['length']);
+        }
+        else if (type === 'float' || type === 'double' || type === 'decimal') {
+            column = table[type](name, columnData['precision'], columnData['scale']);
+        }
+        else if (type === 'timestamp' || type === 'timestamptz') {
+            // noinspection JSValidateTypes
+            column = table.timestamp(name, type !== 'timestamptz');
+        }
+        else if (type === 'enu' || type === 'enum') {
+            // noinspection JSUnresolvedFunction
+            column = table.enu(name, columnData['enum_values']);
+        }
+        else if (type === 'json' || type === 'jsonb') {
+            column = table.json(name, type === 'jsonb');
+        }
+        else {
+            column = table[type](name);
+        }
+
+        if (unsigned) {
+            // noinspection JSUnresolvedFunction
+            column.unsigned();
+        }
+
+        if (columnData['raw_default'] !== undefined) {
+            // noinspection JSUnresolvedFunction
+            column.defaultTo(db.raw(columnData['raw_default']));
+        }
+        else if (columnData['default'] !== undefined) {
+            // noinspection JSUnresolvedFunction
+            column.defaultTo(columnData['default']);
+        }
+
+        if (columnData['unique']) {
+            // noinspection JSValidateTypes
+            column.unique();
+        }
+
+        if (columnData['primary_key']) {
+            // noinspection JSUnresolvedFunction
+            column.primary();
+        }
+
+        if (columnData['unsigned']) {
+            // noinspection JSUnresolvedFunction
+            column.unsigned();
+        }
+
+        if (columnData['nullable'] != null && !columnData['nullable']) {
+            // noinspection JSUnresolvedFunction
+            column.notNullable();
+        }
+
+        if (typeof columnData['collate'] === 'string') {
+            // noinspection JSValidateTypes
+            column.collate(columnData['collate']);
+        }
+
+        return column;
+    };
+
+    /**
+     * Manually create the table from a table description object.
+     * This does not create the indexes or foreign keys - they are created in different calls.
+     * @param {Object} db A knex instance
+     * @param {String} tableName The name of the table to create
+     * @param {TableDescription} tableData The table data
+     * @param {function(error:?)?} callback - optional callback
+     * @returns {Promise<void>|*}
+     */
+    static createTable(db, tableName, tableData, callback) {
+
+        // noinspection JSCheckFunctionSignatures
+        const table = db.schema.createTable(_tablePrefix + tableName, table => {
+
+            const columns = tableData['columns'];
+            if (columns) {
+                for (const column of columns) {
+                    KnexSchemaBuilder.createColumn(db, table, column);
+                }
+            }
+
+            const primaryKey = tableData['primary_key'];
+            if (primaryKey) {
+                if (primaryKey instanceof Array) {
+                    // noinspection JSUnresolvedFunction
+                    table.primary(tableData['primary_key']);
+                }
+                else {
+                    // noinspection JSUnresolvedFunction
+                    table.primary([primaryKey]);
+                }
+            }
+
+            if (tableData['timestamps']) {
+                // noinspection JSValidateTypes
+                table.timestamps();
             }
 
         });
 
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
-    }
-
-    return promise;
-};
-
-/**
- * Ensures that the schema_globals exists.
- * @param {Object} db A knex instance
- * @param {function(error:?,created:Boolean)?} callback
- * @returns {Promise.<Boolean>|*}
- */
-var ensureSchemaGlobalsExist = function (db, callback) {
-
-    var promise = db.schema
-        .hasTable('schema_globals')
-        .then(function(exists){
-
-            if (exists) {
-                return false;
-            } else {
-                return db.schema
-                    .createTable('schema_globals', function(table){
-                        table.string('key', 64).notNullable().primary();;
-                        table.string('value', 255);
-                    })
-                    .then(function(){
-                        return true;
-                    });
+        for (const func of ['engine', 'charset', 'collate']) {
+            if (tableData[func]) {
+                table[func](tableData[func]);
             }
+        }
 
-        });
+        const promise = table;
 
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(ret => {callback(null, ret)});
+        }
+
+        return promise;
     }
 
-    return promise;
-};
+    /**
+     * Manually create the indexes from a table description object.
+     * @param {Object} db A knex instance
+     * @param {String} tableName The name of the table to create
+     * @param {TableDescription} tableData The table data
+     * @param {function(error:?)?} callback - optional callback
+     * @returns {Promise<void>|*}
+     */
+    static createTableIndexes(db, tableName, tableData, callback) {
 
-/**
- * Retrieves the schema version of the current db
- * @param {Object} db A knex instance
- * @param {function(error:?,version:Number)?} callback
- * @returns {Promise.<Number?>|*}
- */
-var getCurrentDbVersion = function (db, callback) {
+        const promise = db.schema
+                          .table(_tablePrefix + tableName, table => {
+                              for (const index of (tableData['indexes'] || [])) {
+                                  KnexSchemaBuilder._createIndexInner(table, index);
+                              }
+                          })
+                          .then(() => undefined);
 
-    var promise = ensureSchemaGlobalsExist(db)
-        .then(function () {
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(() => {callback(null)});
+        }
 
-            return db.select('value')
-                .from('schema_globals')
-                .where('key', _tablePrefix + 'db_version')
-                .limit(1)
-                .then(function (rows) {
-                    return (rows && rows.length) ? parseFloat(rows[0]['value']) : null;
-                })
-        })
-
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
+        return promise;
     }
 
-    return promise;
-};
+    /**
+     * Manually create an index
+     * @param {Object} db A knex instance
+     * @param {String} tableName The name of the table to create
+     * @param {TableIndexDescription} indexData The index data
+     * @param {function(error:?)?} callback - optional callback
+     * @returns {Promise<void>|*}
+     */
+    static createIndex(db, tableName, indexData, callback) {
 
-/**
- * Sets the schema version of the current db
- * @param {Object} db A knex instance
- * @param {Number} version A version, as a whole number
- * @param {function(error:?,version:Number)?} callback
- * @returns {Promise.<Number>|*}
- */
-var setCurrentDbVersion = function (db, version, callback) {
+        const promise = db.schema
+                          .table(_tablePrefix + tableName, table => {
+                              KnexSchemaBuilder._createIndexInner(table, indexData);
+                          })
+                          .then(() => undefined);
 
-    var promise = getCurrentDbVersion(db)
-        .then(function (currentDbVersion) {
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(() => {callback(null)});
+        }
 
-            if (currentDbVersion == null) {
-                return db
-                    .insert({'value': version, 'key': _tablePrefix + 'db_version'})
-                    .into('schema_globals')
-                    .then(function () {
-                        return version;
-                    });
-
-            } else {
-                return db
-                    .table('schema_globals')
-                    .update('value', version)
-                    .where('key', _tablePrefix + 'db_version')
-                    .then(function () {
-                        return version;
-                    });
-            }
-
-        });
-
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
+        return promise;
     }
 
-    return promise;
-};
-
-/**
- * Retrieves the latest schema version which is specified in version.json
- * @param {String} schemaPath Path to where the schema files reside
- * @param {function(error:?,version:Number?)?} callback
- * @returns {Promise.<Number>|*}
- */
-var getLatestDbVersion = function (schemaPath, callback) {
-
-    var promise = readJsonFilePromisified(Path.join(schemaPath, 'version.json'), true)
-        .then(function (data) {
-            if (data) {
-                return data['version'];
-            }
-
-            return null;
-        });
-
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
+    /**
+     * Inner implementation for index creation
+     * @private
+     * @param {Object} table A knex table closure
+     * @param {TableIndexDescription} indexData The index data
+     */
+    static _createIndexInner(table, indexData) {
+        let columns = indexData['columns'];
+        columns = (columns && !(columns instanceof Array)) ? [columns] : columns;
+        if (indexData['unique']) {
+            // noinspection JSValidateTypes
+            table.unique(columns, indexData['name']);
+        }
+        else {
+            table.index(columns, indexData['name']);
+        }
     }
 
-    return promise;
-};
+    /**
+     * Manually create the foreign keys from a table description object.
+     * @param {Object} db A knex instance
+     * @param {String} tableName The name of the table to create
+     * @param {TableDescription} tableData The table data
+     * @param {function(error:?)?} callback - optional callback
+     * @returns {Promise<void>|*}
+     */
+    static createTableForeignKeys(db, tableName, tableData, callback) {
 
-/**
- * Determine if a schema upgrade is required
- * @param {Object} db A knex instance
- * @param {String} schemaPath Path to where the schema files reside
- * @param {function(error:?,isUpgradeNeeded:Boolean?)?} callback
- * @returns {Promise.<Boolean>|*}
- */
-var isUpgradeNeeded = function (db, schemaPath, callback) {
+        const promise = db.schema
+                          .table(_tablePrefix + tableName, table => {
+                              for (const foreignKeyData of (tableData['foreign_keys'] || [])) {
+                                  KnexSchemaBuilder._createForeignInner(table, foreignKeyData);
+                              }
+                          })
+                          .then(() => undefined);
 
-    var promise = getCurrentDbVersion(db)
-        .then(function (dbVer) {
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(() => {callback(null)});
+        }
 
-            return getLatestDbVersion(schemaPath)
-                .then(function (latestVersion) {
-                    return dbVer < latestVersion;
-                })
-        });
-
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
+        return promise;
     }
 
-    return promise;
-};
+    /**
+     * Manually create an foreign key
+     * @param {Object} db A knex instance
+     * @param {String} tableName The name of the table to create
+     * @param {TableForeignKeyDescription} foreignKey The foreign key data
+     * @param {function(error:?)?} callback - optional callback
+     * @returns {Promise<void>|*}
+     */
+    static createForeign(db, tableName, foreignKey, callback) {
 
-/**
- * Determine if a full schema installation is required
- * @param {Object} db A knex instance
- * @param {String} schemaPath Path to where the schema files reside
- * @param {function(error:?,isInstallNeeded:Boolean?)?} callback
- * @returns {Promise.<Boolean>|*}
- */
-var isInstallNeeded = function (db, schemaPath, callback) {
+        const promise = db.schema
+                          .table(_tablePrefix + tableName, table => {
+                              KnexSchemaBuilder._createForeignInner(table, foreignKey);
+                          })
+                          .then(() => undefined);
 
-    var promise = getCurrentDbVersion(db)
-        .then(function (version) {
-            return version == null;
-        })
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(() => {callback(null)});
+        }
 
-    if (typeof callback === 'function') {
-        promise.asCallback(callback);
+        return promise;
     }
 
-    return promise;
-};
+    /**
+     * Inner implementation for foreign key creation
+     * @private
+     * @param {Object} table A knex table closure
+     * @param {TableForeignKeyDescription} foreignKey The foreign key data
+     */
+    static _createForeignInner(table, foreignKey) {
+        let columns = foreignKey['columns'],
+            foreigns = foreignKey['foreign_columns'];
+        columns = (columns && !(columns instanceof Array)) ? [columns] : columns;
+        foreigns = (foreigns && !(foreigns instanceof Array)) ? [foreigns] : foreigns;
 
-/**
- * Sets a generic table prefix for all table creations
- * @param {Object} db A knex instance
- * @param {String} schemaPath Path to where the schema files reside
- * @param {function(error:?,isInstallNeeded:Boolean?)?} callback
- * @returns {Promise.<Boolean>|*}
- */
-var setTablePrefix = function (prefix, callback) {
+        // noinspection JSUnresolvedFunction
+        const foreign = table.foreign(columns)
+                             .references(foreigns)
+                             .inTable(_tablePrefix + foreignKey['foreign_table']);
 
-    _tablePrefix = prefix == null ? '' : (prefix + '');
+        if (foreignKey['on_update']) {
+            // noinspection JSUnresolvedFunction
+            foreign.onUpdate(foreignKey['on_update']);
+        }
 
-    if (typeof callback === 'function') {
-        process.nextTick(function () {
-           callback(null, _tablePrefix);
-        });
+        if (foreignKey['on_delete']) {
+            // noinspection JSUnresolvedFunction
+            foreign.onDelete(foreignKey['on_delete']);
+        }
     }
 
-    return new Promise(function (resolve, reject) {
-        resolve(_tablePrefix);
-    });
-};
+    /**
+     * Ensures that the schema_globals exists.
+     * @param {Object} db A knex instance
+     * @param {function(error:?, created:Boolean)?} callback - optional callback
+     * @returns {Promise<Boolean>|*}
+     */
+    static ensureSchemaGlobalsExist(db, callback) {
 
-module.exports = {
-    setTablePrefix: setTablePrefix,
+        // noinspection JSUnresolvedFunction
+        const promise = db.schema
+                          .hasTable('schema_globals')
+                          .then(exists => {
+                              if (exists) {
+                                  return false;
+                              }
+                              else {
+                                  // noinspection JSCheckFunctionSignatures
+                                  return db.schema
+                                           .createTable('schema_globals', table => {
+                                               // noinspection JSUnresolvedFunction
+                                               table.string('key', 64).notNullable().primary();
 
-    isInstallNeeded: isInstallNeeded,
-    isUpgradeNeeded: isUpgradeNeeded,
+                                               // noinspection JSUnresolvedFunction
+                                               table.string('value', 255);
+                                           })
+                                           .then(() => true);
+                              }
+                          });
 
-    install: install,
-    upgrade: upgrade,
+        if (typeof callback === 'function') {
+            promise
+                .catch(callback)
+                .then(ret => {callback(null, ret)});
+        }
 
-    getCurrentDbVersion: getCurrentDbVersion,
-    setCurrentDbVersion: setCurrentDbVersion,
-    getLatestDbVersion: getLatestDbVersion,
+        return promise;
+    }
 
-    createColumn: createColumn,
-    createTable: createTable,
-    createTableIndexes: createTableIndexes,
-    createTableForeignKeys: createTableForeignKeys,
-    createIndex: createIndex,
-
-    mysqlBackup: require('./backup/mysql')
+    // noinspection JSUnusedGlobalSymbols
+    static get mysqlBackup() {
+        return require('./backup/mysql');
+    }
 };
