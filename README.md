@@ -115,7 +115,7 @@ The solution is the `min_version`, which means that this action will only take p
 * `createTableIndexes (table)`: Creates the indexes for table named `table`
 * `createTableForeignKeys (table)`: Creates the foreign keys for table named `table`
 * `addColumn (table, column)`: Creates the specified column (`column`) in table named `table`
-* `changeColumn (table, column)`: Alters the specified column (`column`) in table named `table`
+* `alterColumn (table, column)`: Alters the specified column (`column`) in table named `table`
 * `renameColumn (table, from, to)`: Renames the `from` column to `to` in table named `table`
 * `createIndex (table, name, columns, unique)`: Creates an index on the specified `table`, using the same syntax as in the schema file
 * `createForeign (table, columns, foreign_table, foreign_columns, on_delete, on_update)`: Creates a foreign key on the specified `table`, using the same syntax as in the schema file
