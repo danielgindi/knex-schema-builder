@@ -382,8 +382,10 @@ module.exports = class KnexSchemaBuilder {
 
                                     case 'alterColumn':
                                         if (schema[action['table']]) {
-                                            const column = schema[action['table']]['columns']
-                                                .filter(item => item['name'] === action['column'])[0];
+                                            const columns = schema[action['table']]['columns'];
+                                            const column = columns.find(item => item['name'] === action['column']);
+                                            const prevColumn = columns[columns.indexOf(column) - 1];
+
                                             if (column) {
                                                 return db.schema
                                                          .table(_tablePrefix + action['table'], table => {
