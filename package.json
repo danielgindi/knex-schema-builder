@@ -28,7 +28,7 @@
   },
   "homepage": "https://github.com/danielgindi/knex-schema-builder",
   "dependencies": {
-    "strip-json-comments": "2.0.1",
+    "strip-json-comments": "3.0.1",
     "util.promisify": "^1.0.0"
   },
   "peerDependencies": {
