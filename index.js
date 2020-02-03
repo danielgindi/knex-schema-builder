@@ -344,12 +344,62 @@ module.exports = class KnexSchemaBuilder {
 
                                     case 'addColumn':
                                         if (schema[action['table']]) {
+                                            const columns = schema[action['table']]['columns'];
+                                            const column = columns.find(item => item['name'] === action['column']);
+                                            const prevColumn = columns[columns.indexOf(column) - 1];
+
+                                            if (column) {
+                                                return db.schema
+                                                         .table(_tablePrefix + action['table'], table => {
+                                                             let pendingCol = KnexSchemaBuilder.createColumn(db, table, column);
+                                                             if (prevColumn)
+                                                                pendingCol.after(pendingCol['name']);
+                                                             else pendingCol.first();
+                                                         })
+                                                         .catch(err => {
+                                                            if (err.code === 'ER_BAD_FIELD_ERROR') {
+                                                                return db.schema.table(_tablePrefix + action['table'], table => {
+                                                                   KnexSchemaBuilder.createColumn(db, table, column);
+                                                                });
+                                                            } else {
+                                                              throw err;
+                                                            }
+                                                         })
+                                                         .catch(softThrow);
+                                            }
+                                            else {
+                                                console.log(
+                                                    'Unknown column named `' + action['column'] + '`. Failing...');
+                                                softThrow('unknown-column');
+                                            }
+                                        }
+                                        else {
+                                            console.log(
+                                                'Unknown table named `' + action['table'] + '`. Failing...');
+                                            softThrow('unknown-table');
+                                        }
+                                        break;
+
+                                    case 'alterColumn':
+                                        if (schema[action['table']]) {
                                             const column = schema[action['table']]['columns']
                                                 .filter(item => item['name'] === action['column'])[0];
                                             if (column) {
                                                 return db.schema
                                                          .table(_tablePrefix + action['table'], table => {
-                                                             KnexSchemaBuilder.createColumn(db, table, column);
+                                                             let pendingCol = KnexSchemaBuilder.createColumn(db, table, column).alter();
+                                                             if (prevColumn)
+                                                                pendingCol.after(pendingCol['name']);
+                                                             else pendingCol.first();
+                                                         })
+                                                         .catch(err => {
+                                                            if (err.code === 'ER_BAD_FIELD_ERROR') {
+                                                                return db.schema.table(_tablePrefix + action['table'], table => {
+                                                                   KnexSchemaBuilder.createColumn(db, table, column).alter();
+                                                                });
+                                                            } else {
+                                                              throw err;
+                                                            }
                                                          })
                                                          .catch(softThrow);
                                             }
