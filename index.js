@@ -353,7 +353,7 @@ module.exports = class KnexSchemaBuilder {
                                                          .table(_tablePrefix + action['table'], table => {
                                                              let pendingCol = KnexSchemaBuilder.createColumn(db, table, column);
                                                              if (prevColumn)
-                                                                pendingCol.after(pendingCol['name']);
+                                                                pendingCol.after(prevColumn['name']);
                                                              else pendingCol.first();
                                                          })
                                                          .catch(err => {
@@ -391,7 +391,7 @@ module.exports = class KnexSchemaBuilder {
                                                          .table(_tablePrefix + action['table'], table => {
                                                              let pendingCol = KnexSchemaBuilder.createColumn(db, table, column).alter();
                                                              if (prevColumn)
-                                                                pendingCol.after(pendingCol['name']);
+                                                                pendingCol.after(prevColumn['name']);
                                                              else pendingCol.first();
                                                          })
                                                          .catch(err => {
