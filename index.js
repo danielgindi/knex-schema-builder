@@ -70,6 +70,23 @@ const readJsonFilePromisified = promisify(readJsonFile);
  * Description of a full table
  * @typedef {{columns: Array<TableColumnDescription>, indexes: Array<TableIndexDescription>?, foreign_keys: Array<TableForeignKeyDescription>?, primary_key: <Array<String>|String>?, engine: String?, charset: String?, collate: String?, timestamps: Boolean?}} TableDescription
  */
+/** */
+
+
+const defaultErrorHandler = ignoreExistsError => {
+  if (ignoreExistsError) {
+    return err => {
+      if (/(\b|_)(exists|duplicate|dup)(\b|_)/i.test(err.code)) {
+        console.log('Ignoring error', err);
+        return;
+      }
+        
+      throw err;
+    };
+  } else {
+    return err => { throw err };
+  }
+}
 
 /** */
 module.exports = class KnexSchemaBuilder {
@@ -144,10 +161,15 @@ module.exports = class KnexSchemaBuilder {
      * Kick off the installation routine.
      * @param {Object} db A knex instance
      * @param {String} schemaPath Path to where the schema files reside
+     * @param {boolean} [ignoreExistsError=false] Ignore "exists" error for table/index creation, can be used to continue a failed install
      * @param {function(error:?)?} callback - optional callback
      * @returns {Promise<Number>|*}
      */
-    static install(db, schemaPath, callback) {
+    static install(db, schemaPath, ignoreExistsError, callback) {
+        if (callback === undefined && typeof ignoreExistsError === 'function') {
+          callback = ignoreExistsError;
+          ignoreExistsError = false;
+        }
 
         let dbTables = {}, dbRawQueries = [];
 
@@ -166,7 +188,10 @@ module.exports = class KnexSchemaBuilder {
                 // Execute schema building
                 return Promise.all(
                     Object.keys(dbTables)
-                          .map(tableName => KnexSchemaBuilder.createTable(db, tableName, dbTables[tableName]))
+                          .map(tableName => {
+                            return KnexSchemaBuilder.createTable(db, tableName, dbTables[tableName])
+                              .catch(defaultErrorHandler(ignoreExistsError));
+                          })
                 );
             })
             .then(() => {
@@ -178,7 +203,8 @@ module.exports = class KnexSchemaBuilder {
                     }
 
                     if (rawQuery && typeof (rawQuery) === 'string') {
-                        return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix));
+                        return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix))
+                              .catch(defaultErrorHandler(ignoreExistsError));
                     }
                 }));
             })
@@ -186,8 +212,7 @@ module.exports = class KnexSchemaBuilder {
                 PromiseHelper.serial(
                     Object.keys(dbTables)
                           .map(tableName =>
-                              () => KnexSchemaBuilder.createTableIndexes(db, tableName,
-                                  dbTables[tableName])
+                              () => KnexSchemaBuilder.createTableIndexes(db, tableName, dbTables[tableName], ignoreExistsError)
                                   .catch(err => {
 
                                       err = 'Failed to create indexes for table ' + tableName + '\n' + err.toString();
@@ -201,8 +226,7 @@ module.exports = class KnexSchemaBuilder {
                 PromiseHelper.serial(
                     Object.keys(dbTables)
                           .map(tableName =>
-                              () => KnexSchemaBuilder.createTableForeignKeys(db, tableName,
-                                  dbTables[tableName])
+                              () => KnexSchemaBuilder.createTableForeignKeys(db, tableName, dbTables[tableName], ignoreExistsError)
                                   .catch(err => {
 
                                       err = 'Failed to create foreign keys for table ' + tableName + '\n' + err.toString();
@@ -835,10 +859,15 @@ module.exports = class KnexSchemaBuilder {
      * @param {Object} db A knex instance
      * @param {String} tableName The name of the table to create
      * @param {TableDescription} tableData The table data
+     * @param {boolean} [ignoreExistsError=false] Ignore "exists" error for single index creation, can be used to continue a failed install
      * @param {function(error:?)?} callback - optional callback
      * @returns {Promise<void>|*}
      */
-    static createTableIndexes(db, tableName, tableData, callback) {
+    static createTableIndexes(db, tableName, tableData, ignoreExistsError, callback) {
+        if (callback === undefined && typeof ignoreExistsError === 'function') {
+          callback = ignoreExistsError;
+          ignoreExistsError = false;
+        }
 
         const promise = db.schema
                           .table(_tablePrefix + tableName, table => {
@@ -846,6 +875,7 @@ module.exports = class KnexSchemaBuilder {
                                   KnexSchemaBuilder._createIndexInner(table, index);
                               }
                           })
+                          .catch(defaultErrorHandler(ignoreExistsError))
                           .then(() => undefined);
 
         if (typeof callback === 'function') {
@@ -905,10 +935,15 @@ module.exports = class KnexSchemaBuilder {
      * @param {Object} db A knex instance
      * @param {String} tableName The name of the table to create
      * @param {TableDescription} tableData The table data
+     * @param {boolean} [ignoreExistsError=false] Ignore "exists" error for single key creation, can be used to continue a failed install
      * @param {function(error:?)?} callback - optional callback
      * @returns {Promise<void>|*}
      */
-    static createTableForeignKeys(db, tableName, tableData, callback) {
+    static createTableForeignKeys(db, tableName, tableData, ignoreExistsError, callback) {
+        if (callback === undefined && typeof ignoreExistsError === 'function') {
+          callback = ignoreExistsError;
+          ignoreExistsError = false;
+        }
 
         const promise = db.schema
                           .table(_tablePrefix + tableName, table => {
@@ -916,6 +951,7 @@ module.exports = class KnexSchemaBuilder {
                                   KnexSchemaBuilder._createForeignInner(table, foreignKeyData);
                               }
                           })
+                          .catch(defaultErrorHandler(ignoreExistsError))
                           .then(() => undefined);
 
         if (typeof callback === 'function') {
