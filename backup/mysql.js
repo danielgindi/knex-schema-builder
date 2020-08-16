@@ -1,7 +1,5 @@
 "use strict";
 
-const PromiseHelper = require('../util/promises');
-
 /** @const */
 const NEW_LINE = '\r\n';
 
@@ -19,7 +17,7 @@ const DbObjectType = {
     Event: 'Event',
     View: 'View',
     Table: 'Table',
-    Trigger: 'Trigger'
+    Trigger: 'Trigger',
 };
 
 /**
@@ -62,7 +60,7 @@ class MysqlBackupController {
      * @param {MysqlBackupOptions} options
      * @returns {Promise}
      */
-    static generateBackup(knex, outputStream, options) {
+    static async generateBackup(knex, outputStream, options) {
 
         outputStream.write('DELIMITER ' + DELIMITER + NEW_LINE);
         outputStream.write('SET FOREIGN_KEY_CHECKS=0 ' + DELIMITER + NEW_LINE);
@@ -73,151 +71,136 @@ class MysqlBackupController {
             outputStream.write('START TRANSACTION ' + DELIMITER + NEW_LINE);
         }
 
-        return Promise.resolve()
-                      .then(() => {
-                          if (options.routines) {
-                              return MysqlBackupController.exportRoutines(knex, outputStream, options);
-                          }
-                      })
-                      .then(() => {
-                          if (options.tableStructure) {
-                              return MysqlBackupController.exportTableStructure(knex, outputStream, options);
-                          }
-                      })
-                      .then(() => {
-                          if (options.tableData) {
-                              return MysqlBackupController.exportTableData(knex, outputStream, options);
-                          }
-                      })
-                      .then(() => {
-                          if (options.triggers) {
-                              return MysqlBackupController.exportTriggers(knex, outputStream, options);
-                          }
-                      })
-                      .then(() => {
-                          outputStream.write('SET FOREIGN_KEY_CHECKS=1 ' + DELIMITER + NEW_LINE);
-                      })
-                      .then(() => {
-                          if (options.wrapInTransaction) {
-                              outputStream.write('COMMIT ' + DELIMITER + NEW_LINE);
-                          }
-                      });
+        if (options.routines) {
+            await MysqlBackupController.exportRoutines(knex, outputStream, options);
+        }
+        if (options.tableStructure) {
+            await MysqlBackupController.exportTableStructure(knex, outputStream, options);
+        }
+        if (options.tableData) {
+            await MysqlBackupController.exportTableData(knex, outputStream, options);
+        }
+        if (options.triggers) {
+            await MysqlBackupController.exportTriggers(knex, outputStream, options);
+        }
+        outputStream.write('SET FOREIGN_KEY_CHECKS=1 ' + DELIMITER + NEW_LINE);
+        if (options.wrapInTransaction) {
+            outputStream.write('COMMIT ' + DELIMITER + NEW_LINE);
+        }
     }
 
     /**
      * Exports a CREATE query for an object by type and name
      * @param {knex} knex
      * @param {DbObjectType} objectType
-     * @param {String} objectName
-     * @param {Boolean = false} ifNotExists
-     * @returns {Promise}
+     * @param {string} objectName
+     * @param {boolean} [ifNotExists=false]
+     * @returns {Promise<string>}
      */
-    static getObjectCreate(knex, objectType, objectName, ifNotExists) {
+    static async getObjectCreate(knex, objectType, objectName, ifNotExists) {
 
         const sql = 'SHOW CREATE ' + dbObjectTypeFromType(objectType) + ' ' + wrapObjectName(objectName);
 
-        return /**@type Promise*/knex.raw(sql).then(resp => {
+        let resp = await knex.raw(sql);
 
-            const rows = resp[0];
-            if (!rows.length) {
-                throw new Error('Object not found: ' + objectName);
-            }
+        const rows = resp[0];
+        if (!rows.length) {
+            throw new Error('Object not found: ' + objectName);
+        }
 
-            let resultColumn = '';
+        let resultColumn = '';
 
-            switch (objectType) {
-                case DbObjectType.Procedure:
-                    resultColumn = "Create Procedure";
-                    break;
-                case DbObjectType.Function:
-                    resultColumn = "Create Function";
-                    break;
-                case DbObjectType.Event:
-                    resultColumn = "Create Event";
-                    break;
-                case DbObjectType.View:
-                    resultColumn = "Create View";
-                    break;
-                case DbObjectType.Table:
-                    resultColumn = "Create Table";
-                    break;
-                case DbObjectType.Trigger:
-                    resultColumn = "SQL Original Statement";
-                    break;
-            }
+        switch (objectType) {
+            case DbObjectType.Procedure:
+                resultColumn = "Create Procedure";
+                break;
+            case DbObjectType.Function:
+                resultColumn = "Create Function";
+                break;
+            case DbObjectType.Event:
+                resultColumn = "Create Event";
+                break;
+            case DbObjectType.View:
+                resultColumn = "Create View";
+                break;
+            case DbObjectType.Table:
+                resultColumn = "Create Table";
+                break;
+            case DbObjectType.Trigger:
+                resultColumn = "SQL Original Statement";
+                break;
+        }
 
-            let create = rows[0][resultColumn];
+        let create = rows[0][resultColumn];
 
-            if (ifNotExists && create) {
-                create = create.replace(
-                    /^(CREATE\s+(DEFINER\s*=\s*(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)(@(`(?:[^`]|``)+`|[a-zA-Z0-9$_.]+))?\s+)?PROCEDURE\s+)(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)/,
-                    'DROP PROCEDURE IF EXISTS $5 ' + DELIMITER.replace(/\$/g, '$$$$') + NEW_LINE + '$1$5');
-                create = create.replace(
-                    /^(CREATE\s+(DEFINER\s*=\s*(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)(@(`(?:[^`]|``)+`|[a-zA-Z0-9$_.]+))?\s+)?FUNCTION\s+)(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)/,
-                    'DROP FUNCTION IF EXISTS $5 ' + DELIMITER.replace(/\$/g, '$$$$') + NEW_LINE + '$1$5');
-                create = create.replace(
-                    /^(CREATE\s+(DEFINER\s*=\s*(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)(@(`(?:[^`]|``)+`|[a-zA-Z0-9$_.]+))?\s+)?EVENT\s+)/,
-                    '$1IF NOT EXISTS ');
-                create = create.replace(
-                    /^(CREATE\s+(DEFINER\s*=\s*(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)(@(`(?:[^`]|``)+`|[a-zA-Z0-9$_.]+))?\s+)?TRIGGER\s+)/,
-                    '$1IF NOT EXISTS ');
-                create = create.replace(/^(CREATE\s+VIEW)/, '$1 OR REPLACE');
-                create = create.replace(/^(CREATE\s+TABLE)/, '$1 IF NOT EXISTS');
-            }
+        if (ifNotExists && create) {
+            create = create.replace(
+                /^(CREATE\s+(DEFINER\s*=\s*(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)(@(`(?:[^`]|``)+`|[a-zA-Z0-9$_.]+))?\s+)?PROCEDURE\s+)(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)/,
+                'DROP PROCEDURE IF EXISTS $5 ' + DELIMITER.replace(/\$/g, '$$$$') + NEW_LINE + '$1$5');
+            create = create.replace(
+                /^(CREATE\s+(DEFINER\s*=\s*(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)(@(`(?:[^`]|``)+`|[a-zA-Z0-9$_.]+))?\s+)?FUNCTION\s+)(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)/,
+                'DROP FUNCTION IF EXISTS $5 ' + DELIMITER.replace(/\$/g, '$$$$') + NEW_LINE + '$1$5');
+            create = create.replace(
+                /^(CREATE\s+(DEFINER\s*=\s*(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)(@(`(?:[^`]|``)+`|[a-zA-Z0-9$_.]+))?\s+)?EVENT\s+)/,
+                '$1IF NOT EXISTS ');
+            create = create.replace(
+                /^(CREATE\s+(DEFINER\s*=\s*(`(?:[^`]|``)+`|[a-zA-Z0-9$_]+)(@(`(?:[^`]|``)+`|[a-zA-Z0-9$_.]+))?\s+)?TRIGGER\s+)/,
+                '$1IF NOT EXISTS ');
+            create = create.replace(/^(CREATE\s+VIEW)/, '$1 OR REPLACE');
+            create = create.replace(/^(CREATE\s+TABLE)/, '$1 IF NOT EXISTS');
+        }
 
-            return create;
-        });
+        return create;
     }
 
     /**
      * Exports an object list by objectType
      * @param {knex} knex
      * @param {DbObjectType} objectType
-     * @returns {Promise}
+     * @returns {Promise<string[]>}
      */
-    static getObjectList(knex, objectType) {
+    static async getObjectList(knex, objectType) {
 
         let query;
         switch (objectType) {
             case DbObjectType.Table:
                 query = knex.select('TABLE_NAME AS name').from('INFORMATION_SCHEMA.TABLES')
-                            .where('TABLE_SCHEMA', knex.raw('DATABASE()'))
-                            .andWhere('TABLE_TYPE', 'BASE TABLE');
+                    .where('TABLE_SCHEMA', knex.raw('DATABASE()'))
+                    .andWhere('TABLE_TYPE', 'BASE TABLE');
                 break;
             case DbObjectType.Event:
                 query = knex.select('EVENT_NAME AS name').from('INFORMATION_SCHEMA.EVENTS')
-                            .where('EVENT_SCHEMA', knex.raw('DATABASE()'));
+                    .where('EVENT_SCHEMA', knex.raw('DATABASE()'));
                 break;
             case DbObjectType.Function:
             case DbObjectType.Procedure:
                 query = knex.select('SPECIFIC_NAME AS name').from('INFORMATION_SCHEMA.ROUTINES')
-                            .where('ROUTINE_SCHEMA', knex.raw('DATABASE()'))
-                            .where('ROUTINE_TYPE', objectType === DbObjectType.Function ? 'FUNCTION' : 'PROCEDURE');
+                    .where('ROUTINE_SCHEMA', knex.raw('DATABASE()'))
+                    .where('ROUTINE_TYPE', objectType === DbObjectType.Function ? 'FUNCTION' : 'PROCEDURE');
                 break;
             case DbObjectType.View:
                 query = knex.select('TABLE_NAME AS name').from('INFORMATION_SCHEMA.TABLES')
-                            .where('TABLE_SCHEMA', knex.raw('DATABASE()'))
-                            .andWhere('TABLE_TYPE', 'VIEW');
+                    .where('TABLE_SCHEMA', knex.raw('DATABASE()'))
+                    .andWhere('TABLE_TYPE', 'VIEW');
                 break;
             case DbObjectType.Trigger:
                 query = knex.select('TRIGGER_NAME AS name').from('INFORMATION_SCHEMA.TRIGGERS')
-                            .where('TRIGGER_SCHEMA', knex.raw('DATABASE()'));
+                    .where('TRIGGER_SCHEMA', knex.raw('DATABASE()'));
                 break;
             default:
-                return Promise.resolve([]);
+                return [];
         }
 
         // noinspection JSMismatchedCollectionQueryUpdate
         const results = [];
 
-        return /**@type Promise*/query.then(rows => {
+        let rows = await query;
 
-            for (const row of rows) {
-                results.push(row['name']);
-            }
+        for (const row of rows) {
+            results.push(row['name']);
+        }
 
-            return results;
-        });
+        return results;
     }
 
     /**
@@ -226,14 +209,14 @@ class MysqlBackupController {
      * @param {String} tableName
      * @returns {Promise}
      */
-    static isView(knex, tableName) {
+    static async isView(knex, tableName) {
 
         // noinspection JSUnresolvedFunction
-        return /**@type Promise*/knex.select('TABLE_NAME')
-                                     .from('information_schema.VIEWS')
-                                     .where('TABLE_SCHEMA', knex.raw('SCHEMA()'))
-                                     .andWhere('TABLE_NAME', tableName)
-                                     .then(rows => rows.length && rows[0]['TABLE_NAME'] != null);
+        let rows = await knex.select('TABLE_NAME')
+            .from('information_schema.VIEWS')
+            .where('TABLE_SCHEMA', knex.raw('SCHEMA()'))
+            .andWhere('TABLE_NAME', tableName);
+        return rows.length > 0 && rows[0]['TABLE_NAME'] != null;
     }
 
     /**
@@ -243,41 +226,26 @@ class MysqlBackupController {
      * @param {MysqlBackupOptions} options
      * @returns {Promise}
      */
-    static exportRoutines(knex, outputStream, options) {
+    static async exportRoutines(knex, outputStream, options) {
+        let procedures = await this.getObjectList(knex, DbObjectType.Procedure);
 
-        return this.getObjectList(knex, DbObjectType.Procedure)
-                   .then(procedures =>
-                       PromiseHelper.serial(procedures.map(procName => () => {
+        for (let procName of procedures) {
+            outputStream.write('DROP PROCEDURE IF EXISTS ' + wrapObjectName(procName) + ' ' + DELIMITER + NEW_LINE);
 
-                           outputStream.write(
-                               'DROP PROCEDURE IF EXISTS ' + wrapObjectName(procName) + ' ' + DELIMITER + NEW_LINE);
+            let createSql = await MysqlBackupController.getObjectCreate(knex, DbObjectType.Procedure, procName, false);
+            outputStream.write(createSql + ' ' + DELIMITER + NEW_LINE);
+        }
 
-                           return MysqlBackupController
-                               .getObjectCreate(knex, DbObjectType.Procedure, procName, false)
-                               .then(createSql => {
-                                   outputStream.write(createSql + ' ' + DELIMITER + NEW_LINE);
-                               });
-                       }))
-                   )
-                   .then(() => MysqlBackupController
-                       .getObjectList(knex, DbObjectType.Function)
-                       .then(functions =>
-                           PromiseHelper.serial(functions.map(funcName => () => {
+        let functions = await MysqlBackupController.getObjectList(knex, DbObjectType.Function);
 
-                               outputStream.write(
-                                   'DROP PROCEDURE IF EXISTS ' + wrapObjectName(
-                                   funcName) + ' ' + DELIMITER + NEW_LINE);
+        for (let procName of functions) {
+            outputStream.write(
+                'DROP PROCEDURE IF EXISTS ' + wrapObjectName(
+                funcName) + ' ' + DELIMITER + NEW_LINE);
 
-                               return MysqlBackupController.getObjectCreate(knex,
-                                   DbObjectType.Function, funcName, false)
-                                                           .then(createSql => {
-                                                               outputStream.write(
-                                                                   createSql + ' ' + DELIMITER + NEW_LINE);
-                                                           });
-                           }))
-                       )
-                   );
-
+            let createSql = await MysqlBackupController.getObjectCreate(knex, DbObjectType.Function, funcName, false);
+            outputStream.write(createSql + ' ' + DELIMITER + NEW_LINE);
+        }
     }
 
     /**
@@ -287,57 +255,35 @@ class MysqlBackupController {
      * @param {MysqlBackupOptions} options
      * @returns {Promise}
      */
-    static exportTableStructure(knex, outputStream, options) {
+    static async exportTableStructure(knex, outputStream, options) {
+        let tables = await this.getObjectList(knex, DbObjectType.Table);
+        const views = [];
 
-        return this.getObjectList(knex, DbObjectType.Table)
-                   .then(tables => {
+        for (let tableName of tables) {
+            let isView = await MysqlBackupController;
 
-                       const views = [];
+            if (isView) {
+                views.push(tableName);
+                return;
+            }
 
-                       return PromiseHelper
-                           .serial(tables.map(tableName => () =>
-                               MysqlBackupController
-                                   .isView(knex, tableName)
-                                   .then(isView => {
+            if (options.dropTable) {
+                outputStream.write('DROP TABLE IF EXISTS ' + wrapObjectName(
+                    tableName) + ' ' + DELIMITER + NEW_LINE);
+            }
 
-                                       if (isView) {
-                                           views.push(tableName);
-                                           return;
-                                       }
+            let createSql = await MysqlBackupController.getObjectCreate(knex, DbObjectType.Table, tableName, !options.dropTable);
+            outputStream.write(createSql + ' ' + DELIMITER + NEW_LINE);
+        }
 
-                                       if (options.dropTable) {
-                                           outputStream.write('DROP TABLE IF EXISTS ' + wrapObjectName(
-                                               tableName) + ' ' + DELIMITER + NEW_LINE);
-                                       }
+        for (let viewName of views) {
+            if (options.dropTable) {
+                outputStream.write('DROP VIEW IF EXISTS ' + wrapObjectName(viewName) + ' ' + DELIMITER + NEW_LINE);
+            }
 
-                                       return MysqlBackupController
-                                           .getObjectCreate(knex, DbObjectType.Table,
-                                               tableName, !options.dropTable)
-                                           .then(createSql => {
-                                               outputStream.write(
-                                                   createSql + ' ' + DELIMITER + NEW_LINE);
-                                           });
-
-                                   })))
-                           .then(() => PromiseHelper
-                               .serial(views.map(viewName => () => {
-                                   if (options.dropTable) {
-                                       outputStream.write('DROP VIEW IF EXISTS ' + wrapObjectName(
-                                           viewName) + ' ' + DELIMITER + NEW_LINE);
-                                   }
-
-                                   return MysqlBackupController
-                                       .getObjectCreate(knex, DbObjectType.View, viewName,
-                                           !options.dropTable)
-                                       .then(createSql => {
-                                           outputStream.write(
-                                               createSql + ' ' + DELIMITER + NEW_LINE);
-                                       });
-                               }))
-                           );
-
-                   });
-
+            let createSql = await MysqlBackupController.getObjectCreate(knex, DbObjectType.View, viewName, !options.dropTable);
+            outputStream.write(createSql + ' ' + DELIMITER + NEW_LINE);
+        }
     }
 
     /**
@@ -347,42 +293,38 @@ class MysqlBackupController {
      * @param {MysqlBackupOptions} options
      * @returns {Promise}
      */
-    static exportTableData(knex, outputStream, options) {
+    static async exportTableData(knex, outputStream, options) {
+        let tables = await this.getObjectList(knex, DbObjectType.Table);
+        for (let tableName of tables) {
+            let isView = await MysqlBackupController.isView(knex, tableName);
 
-        return this.getObjectList(knex, DbObjectType.Table)
-                   .then(tables =>
-                       PromiseHelper.serial(tables.map(tableName => () =>
-                           MysqlBackupController
-                               .isView(knex, tableName)
-                               .then(isView => {
+            if (isView) continue;
 
-                                   if (isView) return;
+            let resolve = null, reject = null,
+                promise = new Promise((r, j) => {
+                    resolve = r;
+                    reject = j;
+                });
 
-                                   const resolver = PromiseHelper.pending();
+            // noinspection JSUnresolvedFunction
+            knex.select('*')
+                .from(tableName)
+                // Dataset may be very large, we want to stream it in and out
+                .stream(stream => {
+                    stream
+                        .on('data', row => {
 
-                                   // noinspection JSUnresolvedFunction
-                                   knex.select('*')
-                                       .from(tableName)
-                                       // Dataset may be very large, we want to stream it in and out
-                                       .stream(stream => {
-                                           stream
-                                               .on('data', row => {
+                            outputStream.write(knex.insert(row)
+                                .into(tableName)
+                                .toString() + ' ' + DELIMITER + NEW_LINE);
 
-                                                   outputStream.write(knex.insert(row)
-                                                                          .into(tableName)
-                                                                          .toString() + ' ' + DELIMITER + NEW_LINE);
+                        })
+                        .on('end', () => resolve());
+                })
+                .catch(reject);
 
-                                               })
-                                               .on('end', () => resolver.resolve());
-                                       })
-                                       .catch(resolver.reject);
-
-                                   return resolver.promise;
-
-                               })
-                       ))
-                   );
-
+            await promise;
+        }
     }
 
     /**
@@ -392,34 +334,29 @@ class MysqlBackupController {
      * @param {MysqlBackupOptions} options
      * @returns {Promise}
      */
-    static exportTriggers(knex, outputStream, options) {
+    static async exportTriggers(knex, outputStream, options) {
 
-        return /**@type Promise*/knex.select(
+        let rows = await knex.select(
             'TRIGGER_NAME AS Trigger',
             'ACTION_TIMING AS Timing',
             'ACTION_ORIENTATION AS Orientation',
             'EVENT_MANIPULATION AS Event',
             'EVENT_OBJECT_TABLE AS Table',
             'ACTION_STATEMENT AS Statement')
-                                     .from('INFORMATION_SCHEMA.TRIGGERS')
-                                     .where('TRIGGER_SCHEMA', knex.raw('DATABASE()'))
-                                     .orderBy('ACTION_ORDER', 'asc')
-                                     .then(rows => {
+            .from('INFORMATION_SCHEMA.TRIGGERS')
+            .where('TRIGGER_SCHEMA', knex.raw('DATABASE()'))
+            .orderBy('ACTION_ORDER', 'asc');
 
-                                         for (const row of rows) {
-                                             outputStream.write(
-                                                 'CREATE TRIGGER ' + wrapObjectName(row['Trigger']) + ' ');
-                                             outputStream.write(
-                                                 row['Timing'] + ' ' + row['Event'] + ' ON ' + wrapObjectName(
-                                                 row['Table']) + ' ');
-                                             outputStream.write('FOR EACH ' + row['Orientation'] + ' ');
-                                             outputStream.write(row['Statement'] + ' ' + DELIMITER + NEW_LINE);
-                                         }
-
-                                     });
-
+        for (const row of rows) {
+            outputStream.write(
+                'CREATE TRIGGER ' + wrapObjectName(row['Trigger']) + ' ');
+            outputStream.write(
+                row['Timing'] + ' ' + row['Event'] + ' ON ' + wrapObjectName(
+                row['Table']) + ' ');
+            outputStream.write('FOR EACH ' + row['Orientation'] + ' ');
+            outputStream.write(row['Statement'] + ' ' + DELIMITER + NEW_LINE);
+        }
     }
-
 }
 
 module.exports = MysqlBackupController;

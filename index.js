@@ -4,7 +4,6 @@ const Path = require('path');
 const Fs = require('fs');
 const stripJsonComments = require('strip-json-comments');
 const promisify = require('util.promisify');
-const PromiseHelper = require('./util/promises');
 
 let _tablePrefix = '';
 
@@ -25,8 +24,7 @@ const readJsonFile = (path, stripComments, callback) => {
     Fs.readFile(path, 'utf8', (err, json) => {
         if (err) {
             callback(err);
-        }
-        else {
+        } else {
             let data = null;
 
             try {
@@ -34,8 +32,7 @@ const readJsonFile = (path, stripComments, callback) => {
                     json = stripJsonComments(json);
                 }
                 data = JSON.parse(json);
-            }
-            catch (e) {
+            } catch (e) {
                 err = e;
             }
 
@@ -72,182 +69,169 @@ const readJsonFilePromisified = promisify(readJsonFile);
  */
 /** */
 
-
 const defaultErrorHandler = ignoreExistsError => {
-  if (ignoreExistsError) {
-    return err => {
-      if (/(\b|_)(exists|duplicate|dup)(\b|_)/i.test(err.code)) {
-        console.log('Ignoring error', err);
-        return;
-      }
-        
-      throw err;
-    };
-  } else {
-    return err => { throw err };
-  }
-}
+    if (ignoreExistsError) {
+        return err => {
+            if (/(\b|_)(exists|duplicate|dup)(\b|_)/i.test(err.code)) {
+                console.log('Ignoring error', err);
+                return;
+            }
+
+            throw err;
+        };
+    } else {
+        return err => { throw err; };
+    }
+};
 
 /** */
 module.exports = class KnexSchemaBuilder {
     // noinspection JSUnusedGlobalSymbols
     /**
      * Sets a generic table prefix for all table creations
-     * @param {String} prefix - A prefix for tables
-     * @param {function(error:?)?} callback - optional callback
-     * @returns {Promise<Boolean>|*}
+     * @param {string} prefix - A prefix for tables
+     * @param {function(error:?, prefix:string)?} callback - optional callback
+     * @returns {Promise<string>}
      */
-    static setTablePrefix(prefix, callback) {
-
+    static async setTablePrefix(prefix, callback) {
         _tablePrefix = prefix == null ? '' : (prefix + '');
+        let ret = _tablePrefix;
 
         if (typeof callback === 'function') {
-            process.nextTick(() => {
-                callback(null, _tablePrefix);
-            });
+            setImmediate(() => callback(null, ret));
         }
 
-        return new Promise((resolve/*, reject*/) => {
-            resolve(_tablePrefix);
-        });
+        return ret;
     }
 
     /**
      * Determine if a schema upgrade is required
      * @param {Object} db A knex instance
-     * @param {String} schemaPath Path to where the schema files reside
-     * @param {function(error:?, isUpgradeNeeded:Boolean?)?} callback - optional callback
-     * @returns {Promise<Boolean>|*}
+     * @param {string} schemaPath Path to where the schema files reside
+     * @param {function(error:?, isUpgradeNeeded:boolean?)?} callback - optional callback
+     * @returns {Promise<boolean>}
      */
-    static isUpgradeNeeded(db, schemaPath, callback) {
-
-        const promise = KnexSchemaBuilder.getCurrentDbVersion(db)
-            .then(dbVer =>
-                KnexSchemaBuilder.getLatestDbVersion(schemaPath)
-                    .then(latestVersion => dbVer < latestVersion));
-
-        if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(ret => {callback(null, ret)});
+    static async isUpgradeNeeded(db, schemaPath, callback) {
+        let ret = false;
+        try {
+            let dbVer = await KnexSchemaBuilder.getCurrentDbVersion(db);
+            let latestVersion = await KnexSchemaBuilder.getLatestDbVersion(schemaPath);
+            ret = dbVer < latestVersion;
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
+            }
+            throw err;
         }
 
-        return promise;
+        if (typeof callback === 'function') {
+            setImmediate(() => callback(null, ret));
+        }
+
+        return ret;
     }
 
     // noinspection JSUnusedGlobalSymbols
     /**
      * Determine if a full schema installation is required
      * @param {Object} db A knex instance
-     * @param {String} schemaPath Path to where the schema files reside
-     * @param {function(error:?, isInstallNeeded:Boolean?)?} callback - optional callback
-     * @returns {Promise<Boolean>|*}
+     * @param {string} schemaPath Path to where the schema files reside
+     * @param {function(error:?, isInstallNeeded:boolean?)?} callback - optional callback
+     * @returns {Promise<boolean>}
      */
-    static isInstallNeeded(db, schemaPath, callback) {
+    static async isInstallNeeded(db, schemaPath, callback) {
+        let ret = true;
 
-        const promise = KnexSchemaBuilder.getCurrentDbVersion(db)
-            .then(version => version == null);
-
-        if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(ret => {callback(null, ret)});
+        try {
+            let version = await KnexSchemaBuilder.getCurrentDbVersion(db);
+            ret = version === null;
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
+            }
+            throw err;
         }
 
-        return promise;
+        if (typeof callback === 'function') {
+            setImmediate(() => callback(null, ret));
+        }
+
+        return ret;
     }
 
     /**
      * Kick off the installation routine.
      * @param {Object} db A knex instance
-     * @param {String} schemaPath Path to where the schema files reside
+     * @param {string} schemaPath Path to where the schema files reside
      * @param {boolean} [ignoreExistsError=false] Ignore "exists" error for table/index creation, can be used to continue a failed install
-     * @param {function(error:?)?} callback - optional callback
-     * @returns {Promise<Number>|*}
+     * @param {function(error:?, version:number)?} callback - optional callback
+     * @returns {Promise<number>}
      */
-    static install(db, schemaPath, ignoreExistsError, callback) {
+    static async install(db, schemaPath, ignoreExistsError, callback) {
         if (callback === undefined && typeof ignoreExistsError === 'function') {
-          callback = ignoreExistsError;
-          ignoreExistsError = false;
+            callback = ignoreExistsError;
+            ignoreExistsError = false;
         }
 
-        let dbTables = {}, dbRawQueries = [];
+        try {
+            let dbTables = {}, dbRawQueries = [];
 
-        const promise = readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true)
-            .then(schema => {
+            let version = await KnexSchemaBuilder.getLatestDbVersion(schemaPath);
+            let schema = await readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true);
 
-                if (schema['schema'] && !Array.isArray(schema['schema']['columns'])) {
-                    dbTables = schema['schema'];
-                    dbRawQueries = schema['raw'] || [];
+            if (schema['schema'] && !Array.isArray(schema['schema']['columns'])) {
+                dbTables = schema['schema'];
+                dbRawQueries = schema['raw'] || [];
+            } else {
+                dbTables = schema;
+            }
+
+            for (let tableName of Object.keys(dbTables)) {
+                await KnexSchemaBuilder.createTable(db, tableName, dbTables[tableName])
+                    .catch(defaultErrorHandler(ignoreExistsError));
+            }
+
+            // Execute raw queries
+            for (let rawQuery of dbRawQueries) {
+                if (Array.isArray(rawQuery) && typeof (rawQuery[0]) === 'string') {
+                    rawQuery = rawQuery.join('\n');
                 }
-                else {
-                    dbTables = schema;
+
+                if (rawQuery && typeof (rawQuery) === 'string') {
+                    await db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix))
+                        .catch(defaultErrorHandler(ignoreExistsError));
                 }
-            })
-            .then(() => {
-                // Execute schema building
-                return Promise.all(
-                    Object.keys(dbTables)
-                          .map(tableName => {
-                            return KnexSchemaBuilder.createTable(db, tableName, dbTables[tableName])
-                              .catch(defaultErrorHandler(ignoreExistsError));
-                          })
-                );
-            })
-            .then(() => {
-                // Execute raw queries
+            }
 
-                return PromiseHelper.serial(dbRawQueries.map(rawQuery => () => {
-                    if (Array.isArray(rawQuery) && typeof (rawQuery[0]) === 'string') {
-                        rawQuery = rawQuery.join('\n');
-                    }
+            for (let tableName of Object.keys(dbTables)) {
+                await KnexSchemaBuilder.createTableIndexes(db, tableName, dbTables[tableName], ignoreExistsError)
+                    .catch(err => {
+                        let error = new Error('Failed to create indexes for table ' + tableName + '\n' + err.toString());
+                        err.error = err;
+                        throw error;
+                    });
+            }
 
-                    if (rawQuery && typeof (rawQuery) === 'string') {
-                        return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix))
-                              .catch(defaultErrorHandler(ignoreExistsError));
-                    }
-                }));
-            })
-            .then(() =>
-                PromiseHelper.serial(
-                    Object.keys(dbTables)
-                          .map(tableName =>
-                              () => KnexSchemaBuilder.createTableIndexes(db, tableName, dbTables[tableName], ignoreExistsError)
-                                  .catch(err => {
+            for (let tableName of Object.keys(dbTables)) {
+                await KnexSchemaBuilder.createTableForeignKeys(db, tableName, dbTables[tableName], ignoreExistsError)
+                    .catch(err => {
+                        let error = new Error('Failed to create foreign keys for table ' + tableName + '\n' + err.toString());
+                        err.error = err;
+                        throw error;
+                    });
+            }
 
-                                      err = 'Failed to create indexes for table ' + tableName + '\n' + err.toString();
-                                      throw err;
-
-                                  })
-                          )
-                )
-            )
-            .then(() =>
-                PromiseHelper.serial(
-                    Object.keys(dbTables)
-                          .map(tableName =>
-                              () => KnexSchemaBuilder.createTableForeignKeys(db, tableName, dbTables[tableName], ignoreExistsError)
-                                  .catch(err => {
-
-                                      err = 'Failed to create foreign keys for table ' + tableName + '\n' + err.toString();
-                                      throw err;
-
-                                  })
-                          )
-                )
-            )
-            .then(() =>
-                KnexSchemaBuilder.getLatestDbVersion(schemaPath)
-                    .then(version => KnexSchemaBuilder.setCurrentDbVersion(db, version))
-            );
+            await KnexSchemaBuilder.setCurrentDbVersion(db, version);
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
+            }
+            throw err;
+        }
 
         if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(ret => {callback(null, ret)});
+            return setImmediate(() => callback(null, version));
         }
-
-        return promise;
     }
 
     /**
@@ -256,448 +240,418 @@ module.exports = class KnexSchemaBuilder {
      * If it detects that the db is not even installed (no version specified), then the returned error will be 'empty-database' (String)
      * @param {Object} db A knex instance
      * @param {String} schemaPath Path to where the schema files reside
-     * @param {function(error:?)?} callback - optional callback
-     * @returns {Promise<void>|*}
+     * @param {function(error:?, version: number)?} callback - optional callback
+     * @returns {Promise<number>}
      */
-    static upgrade(db, schemaPath, callback) {
+    static async upgrade(db, schemaPath, callback) {
+        let saveVersion;
 
-        let schema, currentVersion, latestVersion, originalVersion, saveVersion;
+        try {
+            let schemaJson = await readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true);
 
-        const promise = readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true)
-            .then(schemaJson => {
-                if (schemaJson['schema'] && !Array.isArray(schemaJson['schema']['columns'])) {
-                    schemaJson = schemaJson['schema'];
-                }
-                schema = schemaJson;
-            })
-            .then(() => KnexSchemaBuilder.getCurrentDbVersion(db)
-                .then(version => {
-                    originalVersion = currentVersion = version;
+            if (schemaJson['schema'] && !Array.isArray(schemaJson['schema']['columns'])) {
+                schemaJson = schemaJson['schema'];
+            }
+            let schema = schemaJson;
 
-                    return KnexSchemaBuilder.getLatestDbVersion(schemaPath);
-                })
-                .then(version => {
-                    latestVersion = version;
-                })
-            )
-            .then(function () {
+            let originalVersion, currentVersion;
+            originalVersion = currentVersion = saveVersion = await KnexSchemaBuilder.getCurrentDbVersion(db);
+            let latestVersion = await KnexSchemaBuilder.getLatestDbVersion(schemaPath);
 
-                // While the current version hasn't yet reached the latest version
-                return PromiseHelper.while(
-                    () => currentVersion < latestVersion,
-                    () => {
-
+            try {
+                try {
+                    // While the current version hasn't yet reached the latest version
+                    while (currentVersion < latestVersion) {
                         // Load the correct upgrade.####.json file, then perform the relevant actions.
 
-                        let hasUpgradeSchema = false;
                         let upgradeSchema;
 
-                        return readJsonFilePromisified(Path.join(schemaPath, 'upgrade.' + (currentVersion + 1) + '.json'),
-                            true)
-                            .then(schema => {
-                                upgradeSchema = schema;
-                                hasUpgradeSchema = true;
-                            })
-                            .then(() => PromiseHelper.serial(upgradeSchema.map(action => () => {
-                                const softThrow = err => {
-                                    if (err && action['ignore_errors']) {
-                                        console.log('Ignoring error', err);
-                                        err = null;
-                                    }
-                                    else if (err) {
-                                        throw err;
-                                    }
-                                };
-
-                                if (action['min_version'] && action['min_version'] >= originalVersion) {
-                                    return;
-                                }
-
-                                if (action['max_version'] && action['max_version'] <= originalVersion) {
-                                    return;
-                                }
-
-                                switch (action['action']) {
-
-                                    case 'execute':
-                                        let rawQuery = action['query'];
-                                        if (Array.isArray(rawQuery) && typeof (rawQuery[0]) === 'string') {
-                                            rawQuery = rawQuery.join('\n');
-                                        }
-
-                                        return db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix))
-                                                 .catch(softThrow);
-
-                                    case 'createTable':
-                                        if (schema[action['table']]) {
-                                            return KnexSchemaBuilder.createTable(db, action['table'], schema[action['table']])
-                                                .catch(softThrow);
-                                        }
-                                        else {
-                                            console.log(
-                                                'Unknown table named `' + action['table'] + '`. Failing...');
-                                            softThrow('unknown-table');
-                                        }
-                                        break;
-
-                                    case 'createTableIndexes':
-                                        if (schema[action['table']]) {
-                                            return KnexSchemaBuilder.createTableIndexes(db, action['table'],
-                                                schema[action['table']])
-                                                .catch(softThrow);
-                                        }
-                                        else {
-                                            console.log(
-                                                'Unknown table named `' + action['table'] + '`. Failing...');
-                                            softThrow('unknown-table');
-                                        }
-                                        break;
-
-                                    case 'createTableForeignKeys':
-                                        if (schema[action['table']]) {
-                                            return KnexSchemaBuilder.createTableForeignKeys(db, action['table'],
-                                                schema[action['table']])
-                                                .catch(softThrow);
-                                        }
-                                        else {
-                                            console.log(
-                                                'Unknown table named `' + action['table'] + '`. Failing...');
-                                            softThrow('unknown-table');
-                                        }
-                                        break;
-
-                                    case 'addColumn':
-                                        if (schema[action['table']]) {
-                                            const columns = schema[action['table']]['columns'];
-                                            const column = columns.find(item => item['name'] === action['column']);
-                                            const prevColumn = columns[columns.indexOf(column) - 1];
-
-                                            if (column) {
-                                                return db.schema
-                                                         .table(_tablePrefix + action['table'], table => {
-                                                             let pendingCol = KnexSchemaBuilder.createColumn(db, table, column);
-                                                             if (prevColumn)
-                                                                pendingCol.after(prevColumn['name']);
-                                                             else pendingCol.first();
-                                                         })
-                                                         .catch(err => {
-                                                            if (err.code === 'ER_BAD_FIELD_ERROR') {
-                                                                return db.schema.table(_tablePrefix + action['table'], table => {
-                                                                   KnexSchemaBuilder.createColumn(db, table, column);
-                                                                });
-                                                            } else {
-                                                              throw err;
-                                                            }
-                                                         })
-                                                         .catch(softThrow);
-                                            }
-                                            else {
-                                                console.log(
-                                                    'Unknown column named `' + action['column'] + '`. Failing...');
-                                                softThrow('unknown-column');
-                                            }
-                                        }
-                                        else {
-                                            console.log(
-                                                'Unknown table named `' + action['table'] + '`. Failing...');
-                                            softThrow('unknown-table');
-                                        }
-                                        break;
-
-                                    case 'alterColumn':
-                                        if (schema[action['table']]) {
-                                            const columns = schema[action['table']]['columns'];
-                                            const column = columns.find(item => item['name'] === action['column']);
-                                            const prevColumn = columns[columns.indexOf(column) - 1];
-
-                                            if (column) {
-                                                return db.schema
-                                                         .table(_tablePrefix + action['table'], table => {
-                                                             let pendingCol = KnexSchemaBuilder.createColumn(db, table, column).alter();
-                                                             if (prevColumn)
-                                                                pendingCol.after(prevColumn['name']);
-                                                             else pendingCol.first();
-                                                         })
-                                                         .catch(err => {
-                                                            if (err.code === 'ER_BAD_FIELD_ERROR') {
-                                                                return db.schema.table(_tablePrefix + action['table'], table => {
-                                                                   KnexSchemaBuilder.createColumn(db, table, column).alter();
-                                                                });
-                                                            } else {
-                                                              throw err;
-                                                            }
-                                                         })
-                                                         .catch(softThrow);
-                                            }
-                                            else {
-                                                console.log(
-                                                    'Unknown column named `' + action['column'] + '`. Failing...');
-                                                softThrow('unknown-column');
-                                            }
-                                        }
-                                        else {
-                                            console.log(
-                                                'Unknown table named `' + action['table'] + '`. Failing...');
-                                            softThrow('unknown-table');
-                                        }
-                                        break;
-
-                                    case 'renameColumn':
-                                        return db.schema
-                                                 .table(_tablePrefix + action['table'], table => {
-                                                     // noinspection JSUnresolvedFunction
-                                                     table.renameColumn(action['from'], action['to']);
-                                                 })
-                                                 .catch(softThrow);
-
-                                    case 'createIndex':
-                                        return KnexSchemaBuilder.createIndex(db, action['table'], action).catch(softThrow);
-
-                                    case 'createForeign':
-                                        return KnexSchemaBuilder.createForeign(db, action['table'], action).catch(softThrow);
-
-                                    case 'dropColumn':
-                                        return db.schema
-                                                 .table(_tablePrefix + action['table'], table => {
-                                                     // noinspection JSUnresolvedFunction
-                                                     table.dropColumn(action['column']);
-                                                 })
-                                                 .catch(softThrow);
-
-                                    case 'dropTable':
-                                        // noinspection JSUnresolvedFunction
-                                        return db.schema.dropTableIfExists(_tablePrefix + action['table'])
-                                                 .catch(softThrow);
-
-                                    case 'dropPrimary':
-                                        return db.schema
-                                                 .table(_tablePrefix + action['table'], table => {
-                                                     // noinspection JSUnresolvedFunction
-                                                     table.dropPrimary();
-                                                 })
-                                                 .catch(softThrow);
-
-                                    case 'dropIndex':
-                                        return db.schema
-                                                 .table(_tablePrefix + action['table'], table => {
-
-                                                     if (action['name']) {
-                                                         // noinspection JSUnresolvedFunction
-                                                         table.dropIndex(null, action['name']);
-                                                     }
-                                                     else {
-                                                         // noinspection JSUnresolvedFunction
-                                                         table.dropIndex(action['column']);
-                                                     }
-
-                                                 })
-                                                 .catch(softThrow);
-
-                                    case 'dropForeign':
-                                        return db.schema
-                                                 .table(_tablePrefix + action['table'], table => {
-
-                                                     if (action['name']) {
-                                                         // noinspection JSUnresolvedFunction
-                                                         table.dropForeign(null, action['name']);
-                                                     }
-                                                     else {
-                                                         // noinspection JSUnresolvedFunction
-                                                         table.dropForeign(action['column']);
-                                                     }
-
-                                                 })
-                                                 .catch(softThrow);
-
-                                    case 'dropUnique':
-                                        return db.schema
-                                                 .table(_tablePrefix + action['table'], table => {
-
-                                                     if (action['name']) {
-                                                         // noinspection JSUnresolvedFunction
-                                                         table.dropUnique(null, action['name']);
-                                                     }
-                                                     else {
-                                                         // noinspection JSUnresolvedFunction
-                                                         table.dropUnique(action['column']);
-                                                     }
-
-                                                 })
-                                                 .catch(softThrow);
-
-                                    case 'addTimestamps':
-                                        return db.schema
-                                                 .table(_tablePrefix + action['table'], table => {
-                                                     // noinspection JSValidateTypes
-                                                     table.timestamps();
-                                                 })
-                                                 .catch(softThrow);
-
-                                    case 'dropTimestamps':
-                                        return db.schema
-                                                 .table(_tablePrefix + action['table'], table => {
-                                                     // noinspection JSUnresolvedFunction
-                                                     table.dropTimestamps();
-                                                 })
-                                                 .catch(softThrow);
-
-                                    default:
-                                        console.log(
-                                            'Unknown upgrade action `' + action['action'] + '`. Failing...');
-                                        softThrow('unknown-action');
-                                        break;
-                                }
-                            })))
-                            .then(() => {
+                        try {
+                            upgradeSchema = await readJsonFilePromisified(
+                                Path.join(schemaPath, 'upgrade.' + (currentVersion + 1) + '.json'), true);
+                        } catch (err) {
+                            if (err.code === 'ENOENT') {
+                                console.log('Upgrade schema for version ' + (currentVersion + 1) +
+                                    ' (upgrade.' + (currentVersion + 1) + '.json)' +
+                                    ' not found, skipping...');
                                 currentVersion++;
-                            })
-                            .catch(err => {
+                                continue;
+                            }
 
-                                if (!hasUpgradeSchema) {
-                                    if (err instanceof SyntaxError) {
-                                        console.log('Upgrade schema for version ' + (currentVersion + 1) +
-                                            ' (upgrade.' + (currentVersion + 1) + '.json)' +
-                                            ' contains invalid JSON. Please correct it and try again.');
-                                    }
-                                    else {
-                                        console.log('Upgrade schema for version ' + (currentVersion + 1) +
-                                            ' (upgrade.' + (currentVersion + 1) + '.json)' +
-                                            ' not found, skipping...');
-                                        err = false;
-                                    }
-                                }
+                            if (err instanceof SyntaxError) {
+                                console.log('Upgrade schema for version ' + (currentVersion + 1) +
+                                    ' (upgrade.' + (currentVersion + 1) + '.json)' +
+                                    ' contains invalid JSON. Please correct it and try again.');
+                            }
 
-                                if (err) {
+                            // noinspection ExceptionCaughtLocallyJS
+                            throw err;
+                        }
+
+                        for (let action of upgradeSchema) {
+                            const softThrow = err => {
+                                if (err && action['ignore_errors']) {
+                                    console.log('Ignoring error', err);
+                                    err = null;
+                                } else if (err) {
                                     throw err;
                                 }
-                            });
+                            };
 
-                    })
-                    .then(() => {
-                        saveVersion = latestVersion;
-                    })
-                    .catch(err => {
-                        saveVersion = currentVersion;
+                            if (action['min_version'] && action['min_version'] >= originalVersion) {
+                                continue;
+                            }
 
-                        // Rethrow that error
-                        throw err;
-                    });
+                            if (action['max_version'] && action['max_version'] <= originalVersion) {
+                                continue;
+                            }
 
-            })
-            .then(() => KnexSchemaBuilder.setCurrentDbVersion(db, saveVersion))
-            .then(() => undefined)
-            .catch(err => {
+                            switch (action['action']) {
 
-                if (originalVersion === undefined) {
-                    throw 'empty-database';
+                                case 'execute':
+                                    let rawQuery = action['query'];
+                                    if (Array.isArray(rawQuery) && typeof (rawQuery[0]) === 'string') {
+                                        rawQuery = rawQuery.join('\n');
+                                    }
+
+                                    await db.raw(rawQuery.replace(/{table_prefix}/g, _tablePrefix)).catch(softThrow);
+                                    break;
+
+                                case 'createTable':
+                                    if (schema[action['table']]) {
+                                        await KnexSchemaBuilder.createTable(db, action['table'], schema[action['table']]).catch(softThrow);
+                                    } else {
+                                        console.log(
+                                            'Unknown table named `' + action['table'] + '`. Failing...');
+                                        softThrow('unknown-table');
+                                    }
+                                    break;
+
+                                case 'createTableIndexes':
+                                    if (schema[action['table']]) {
+                                        await KnexSchemaBuilder.createTableIndexes(db, action['table'], schema[action['table']]).catch(softThrow);
+                                    } else {
+                                        console.log(
+                                            'Unknown table named `' + action['table'] + '`. Failing...');
+                                        softThrow('unknown-table');
+                                    }
+                                    break;
+
+                                case 'createTableForeignKeys':
+                                    if (schema[action['table']]) {
+                                        await KnexSchemaBuilder.createTableForeignKeys(db, action['table'], schema[action['table']]).catch(softThrow);
+                                    } else {
+                                        console.log(
+                                            'Unknown table named `' + action['table'] + '`. Failing...');
+                                        softThrow('unknown-table');
+                                    }
+                                    break;
+
+                                case 'addColumn':
+                                    if (schema[action['table']]) {
+                                        const columns = schema[action['table']]['columns'];
+                                        const column = columns.find(item => item['name'] === action['column']);
+                                        const prevColumn = columns[columns.indexOf(column) - 1];
+
+                                        if (column) {
+                                            await db.schema
+                                                .table(_tablePrefix + action['table'], table => {
+                                                    let pendingCol = KnexSchemaBuilder.createColumn(db, table, column);
+                                                    if (prevColumn)
+                                                        pendingCol.after(prevColumn['name']);
+                                                    else pendingCol.first();
+                                                })
+                                                .catch(err => {
+                                                    if (err.code === 'ER_BAD_FIELD_ERROR') {
+                                                        return db.schema.table(_tablePrefix + action['table'], table => {
+                                                            KnexSchemaBuilder.createColumn(db, table, column);
+                                                        });
+                                                    } else {
+                                                        throw err;
+                                                    }
+                                                })
+                                                .catch(softThrow);
+                                        } else {
+                                            console.log(
+                                                'Unknown column named `' + action['column'] + '`. Failing...');
+                                            softThrow('unknown-column');
+                                        }
+                                    } else {
+                                        console.log(
+                                            'Unknown table named `' + action['table'] + '`. Failing...');
+                                        softThrow('unknown-table');
+                                    }
+                                    break;
+
+                                case 'alterColumn':
+                                    if (schema[action['table']]) {
+                                        const columns = schema[action['table']]['columns'];
+                                        const column = columns.find(item => item['name'] === action['column']);
+                                        const prevColumn = columns[columns.indexOf(column) - 1];
+
+                                        if (column) {
+                                            await db.schema
+                                                .table(_tablePrefix + action['table'], table => {
+                                                    let pendingCol = KnexSchemaBuilder.createColumn(db, table, column).alter();
+                                                    if (prevColumn)
+                                                        pendingCol.after(prevColumn['name']);
+                                                    else pendingCol.first();
+                                                })
+                                                .catch(err => {
+                                                    if (err.code === 'ER_BAD_FIELD_ERROR') {
+                                                        return db.schema.table(_tablePrefix + action['table'], table => {
+                                                            KnexSchemaBuilder.createColumn(db, table, column).alter();
+                                                        });
+                                                    } else {
+                                                        throw err;
+                                                    }
+                                                })
+                                                .catch(softThrow);
+                                        } else {
+                                            console.log(
+                                                'Unknown column named `' + action['column'] + '`. Failing...');
+                                            softThrow('unknown-column');
+                                        }
+                                    } else {
+                                        console.log(
+                                            'Unknown table named `' + action['table'] + '`. Failing...');
+                                        softThrow('unknown-table');
+                                    }
+                                    break;
+
+                                case 'renameColumn':
+                                    await db.schema
+                                        .table(_tablePrefix + action['table'], table => {
+                                            // noinspection JSUnresolvedFunction
+                                            table.renameColumn(action['from'], action['to']);
+                                        })
+                                        .catch(softThrow);
+                                    break;
+
+                                case 'createIndex':
+                                    await KnexSchemaBuilder.createIndex(db, action['table'], action).catch(softThrow);
+                                    break;
+
+                                case 'createForeign':
+                                    await KnexSchemaBuilder.createForeign(db, action['table'], action).catch(softThrow);
+                                    break;
+
+                                case 'dropColumn':
+                                    await db.schema
+                                        .table(_tablePrefix + action['table'], table => {
+                                            // noinspection JSUnresolvedFunction
+                                            table.dropColumn(action['column']);
+                                        })
+                                        .catch(softThrow);
+                                    break;
+
+                                case 'dropTable':
+                                    // noinspection JSUnresolvedFunction
+                                    await db.schema.dropTableIfExists(_tablePrefix + action['table'])
+                                        .catch(softThrow);
+                                    break;
+
+                                case 'dropPrimary':
+                                    await db.schema
+                                        .table(_tablePrefix + action['table'], table => {
+                                            // noinspection JSUnresolvedFunction
+                                            table.dropPrimary();
+                                        })
+                                        .catch(softThrow);
+                                    break;
+
+                                case 'dropIndex':
+                                    await db.schema
+                                        .table(_tablePrefix + action['table'], table => {
+                                            if (action['name']) {
+                                                // noinspection JSUnresolvedFunction
+                                                table.dropIndex(null, action['name']);
+                                            } else {
+                                                // noinspection JSUnresolvedFunction
+                                                table.dropIndex(action['column']);
+                                            }
+                                        })
+                                        .catch(softThrow);
+                                    break;
+
+                                case 'dropForeign':
+                                    await db.schema
+                                        .table(_tablePrefix + action['table'], table => {
+                                            if (action['name']) {
+                                                // noinspection JSUnresolvedFunction
+                                                table.dropForeign(null, action['name']);
+                                            } else {
+                                                // noinspection JSUnresolvedFunction
+                                                table.dropForeign(action['column']);
+                                            }
+                                        })
+                                        .catch(softThrow);
+                                    break;
+
+                                case 'dropUnique':
+                                    await db.schema
+                                        .table(_tablePrefix + action['table'], table => {
+                                            if (action['name']) {
+                                                // noinspection JSUnresolvedFunction
+                                                table.dropUnique(null, action['name']);
+                                            } else {
+                                                // noinspection JSUnresolvedFunction
+                                                table.dropUnique(action['column']);
+                                            }
+                                        })
+                                        .catch(softThrow);
+                                    break;
+
+                                case 'addTimestamps':
+                                    await db.schema
+                                        .table(_tablePrefix + action['table'], table => {
+                                            // noinspection JSValidateTypes
+                                            table.timestamps();
+                                        })
+                                        .catch(softThrow);
+                                    break;
+
+                                case 'dropTimestamps':
+                                    await db.schema
+                                        .table(_tablePrefix + action['table'], table => {
+                                            // noinspection JSUnresolvedFunction
+                                            table.dropTimestamps();
+                                        })
+                                        .catch(softThrow);
+                                    break;
+
+                                default:
+                                    console.log(
+                                        'Unknown upgrade action `' + action['action'] + '`. Failing...');
+                                    softThrow('unknown-action');
+                                    break;
+                            }
+                        }
+
+                        currentVersion++;
+                    }
+                } finally {
+                    saveVersion = currentVersion;
                 }
-                else {
-                    // Save the point to which we've successfully made it...
-                    return KnexSchemaBuilder.setCurrentDbVersion(db, saveVersion)
-                        .then(() => {
-                            // Rethrow that error
-                            throw err;
-                        });
+
+                saveVersion = latestVersion;
+            } catch (err) {
+                if (saveVersion !== originalVersion) {
+                    await KnexSchemaBuilder.setCurrentDbVersion(db, saveVersion);
                 }
-
-            });
-
-        if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(() => {callback(null)});
+            }
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err, saveVersion));
+            }
+            throw err;
         }
 
-        return promise;
+        if (typeof callback === 'function') {
+            return setImmediate(() => callback(null, saveVersion));
+        }
+
+        return saveVersion;
     }
 
     /**
      * Retrieves the schema version of the current db
      * @param {Object} db A knex instance
-     * @param {function(error:?, version:Number)?} callback - optional callback
-     * @returns {Promise<Number?>|*}
+     * @param {function(error:?, version:number|null)?} callback - optional callback
+     * @returns {Promise<number|null>}
      */
-    static getCurrentDbVersion(db, callback) {
+    static async getCurrentDbVersion(db, callback) {
+        try {
+            await KnexSchemaBuilder.ensureSchemaGlobalsExist(db);
 
-        // noinspection JSUnresolvedFunction
-        const promise = KnexSchemaBuilder.ensureSchemaGlobalsExist(db)
-            .then(() => db.select('value')
-                          .from('schema_globals')
-                          .where('key', _tablePrefix + 'db_version')
-                          .limit(1)
-                          .then(rows => (rows && rows.length) ? parseFloat(rows[0]['value']) : null));
+            let version = null;
+            let row = await db.select('value')
+                .from('schema_globals')
+                .where('key', _tablePrefix + 'db_version')
+                .limit(1)
+                .first();
 
-        if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(ret => {callback(null, ret)});
+            if (row)
+                version = parseFloat(row['value']);
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
+            }
+
+            throw err;
         }
 
-        return promise;
+        if (typeof callback === 'function') {
+            setImmediate(() => callback(null, version));
+        }
+
+        return version;
     }
 
     /**
      * Sets the schema version of the current db
      * @param {Object} db A knex instance
-     * @param {Number} version A version, as a whole number
-     * @param {function(error:?, version:Number)?} callback - optional callback
-     * @returns {Promise<Number>|*}
+     * @param {number} version A version, as a whole number
+     * @param {function(error:?, version:number)?} callback - optional callback
+     * @returns {Promise<number>}
      */
-    static setCurrentDbVersion(db, version, callback) {
+    static async setCurrentDbVersion(db, version, callback) {
+        try {
+            let currentDbVersion = await KnexSchemaBuilder.getCurrentDbVersion(db);
 
-        const promise = KnexSchemaBuilder.getCurrentDbVersion(db)
-            .then(currentDbVersion => {
-                if (currentDbVersion == null) {
-                    // noinspection JSUnresolvedFunction
-                    return db
-                        .insert({'value': version, 'key': _tablePrefix + 'db_version'})
-                        .into('schema_globals')
-                        .then(() => version);
+            if (currentDbVersion == null) {
+                // noinspection JSUnresolvedFunction
+                await db
+                    .insert({'value': version, 'key': _tablePrefix + 'db_version'})
+                    .into('schema_globals');
 
-                }
-                else {
-                    // noinspection JSUnresolvedFunction
-                    return db
-                        .table('schema_globals')
-                        .update('value', version)
-                        .where('key', _tablePrefix + 'db_version')
-                        .then(() => version);
-                }
-            });
-
-        if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(ret => {callback(null, ret)});
+            } else {
+                // noinspection JSUnresolvedFunction
+                await db
+                    .table('schema_globals')
+                    .update('value', version)
+                    .where('key', _tablePrefix + 'db_version');
+            }
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
+            }
+            throw err;
         }
 
-        return promise;
+        if (typeof callback === 'function') {
+            setImmediate(() => callback(null, version));
+        }
+
+        return version;
     }
 
     /**
      * Retrieves the latest schema version which is specified in version.json
-     * @param {String} schemaPath Path to where the schema files reside
-     * @param {function(error:?, version:Number?)?} callback - optional callback
-     * @returns {Promise<Number>|*}
+     * @param {string} schemaPath Path to where the schema files reside
+     * @param {function(error:?, version:number?)?} callback - optional callback
+     * @returns {Promise<number>}
      */
-    static getLatestDbVersion(schemaPath, callback) {
+    static async getLatestDbVersion(schemaPath, callback) {
+        let ret = null;
 
-        const promise = readJsonFilePromisified(Path.join(schemaPath, 'version.json'), true)
-            .then(data => {
-                if (data) {
-                    return data['version'];
-                }
+        try {
+            let data = await readJsonFilePromisified(Path.join(schemaPath, 'version.json'), true);
 
-                return null;
-            });
-
-        if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(ret => {callback(null, ret)});
+            if (data)
+                ret = data['version'];
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
+            }
+            throw err;
         }
 
-        return promise;
+        if (typeof callback === 'function') {
+            setImmediate(() => callback(null, ret));
+        }
+
+        return ret;
     }
 
     /**
@@ -730,28 +684,21 @@ module.exports = class KnexSchemaBuilder {
         if (type[0] === ':') {
             // noinspection JSUnresolvedFunction
             column = table.specificType(name, type.substr(1));
-        }
-        else if (type === 'text') {
+        } else if (type === 'text') {
             column = table.text(name, columnData['text_type']);
-        }
-        else if (type === 'string' || type === 'varchar' || type === 'char') {
+        } else if (type === 'string' || type === 'varchar' || type === 'char') {
             column = table[type](name, columnData['length']);
-        }
-        else if (type === 'float' || type === 'double' || type === 'decimal') {
+        } else if (type === 'float' || type === 'double' || type === 'decimal') {
             column = table[type](name, columnData['precision'], columnData['scale']);
-        }
-        else if (type === 'timestamp' || type === 'timestamptz') {
+        } else if (type === 'timestamp' || type === 'timestamptz') {
             // noinspection JSValidateTypes
             column = table.timestamp(name, type !== 'timestamptz');
-        }
-        else if (type === 'enu' || type === 'enum') {
+        } else if (type === 'enu' || type === 'enum') {
             // noinspection JSUnresolvedFunction
             column = table.enu(name, columnData['enum_values']);
-        }
-        else if (type === 'json' || type === 'jsonb') {
+        } else if (type === 'json' || type === 'jsonb') {
             column = table.json(name, type === 'jsonb');
-        }
-        else {
+        } else {
             column = table[type](name);
         }
 
@@ -763,8 +710,7 @@ module.exports = class KnexSchemaBuilder {
         if (columnData['raw_default'] !== undefined) {
             // noinspection JSUnresolvedFunction
             column.defaultTo(db.raw(columnData['raw_default']));
-        }
-        else if (columnData['default'] !== undefined) {
+        } else if (columnData['default'] !== undefined) {
             // noinspection JSUnresolvedFunction
             column.defaultTo(columnData['default']);
         }
@@ -801,115 +747,119 @@ module.exports = class KnexSchemaBuilder {
      * Manually create the table from a table description object.
      * This does not create the indexes or foreign keys - they are created in different calls.
      * @param {Object} db A knex instance
-     * @param {String} tableName The name of the table to create
+     * @param {string} tableName The name of the table to create
      * @param {TableDescription} tableData The table data
      * @param {function(error:?)?} callback - optional callback
-     * @returns {Promise<void>|*}
+     * @returns {Promise<void>}
      */
-    static createTable(db, tableName, tableData, callback) {
+    static async createTable(db, tableName, tableData, callback) {
+        try {
+            // noinspection JSCheckFunctionSignatures
+            const table = db.schema.createTable(_tablePrefix + tableName, table => {
 
-        // noinspection JSCheckFunctionSignatures
-        const table = db.schema.createTable(_tablePrefix + tableName, table => {
+                const columns = tableData['columns'];
+                if (columns) {
+                    for (const column of columns) {
+                        KnexSchemaBuilder.createColumn(db, table, column);
+                    }
+                }
 
-            const columns = tableData['columns'];
-            if (columns) {
-                for (const column of columns) {
-                    KnexSchemaBuilder.createColumn(db, table, column);
+                const primaryKey = tableData['primary_key'];
+                if (primaryKey) {
+                    if (primaryKey instanceof Array) {
+                        // noinspection JSUnresolvedFunction
+                        table.primary(tableData['primary_key']);
+                    } else {
+                        // noinspection JSUnresolvedFunction
+                        table.primary([primaryKey]);
+                    }
+                }
+
+                if (tableData['timestamps']) {
+                    // noinspection JSValidateTypes
+                    table.timestamps();
+                }
+
+            });
+
+            for (const func of ['engine', 'charset', 'collate']) {
+                if (tableData[func]) {
+                    table[func](tableData[func]);
                 }
             }
 
-            const primaryKey = tableData['primary_key'];
-            if (primaryKey) {
-                if (primaryKey instanceof Array) {
-                    // noinspection JSUnresolvedFunction
-                    table.primary(tableData['primary_key']);
-                }
-                else {
-                    // noinspection JSUnresolvedFunction
-                    table.primary([primaryKey]);
-                }
+            await table;
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
             }
-
-            if (tableData['timestamps']) {
-                // noinspection JSValidateTypes
-                table.timestamps();
-            }
-
-        });
-
-        for (const func of ['engine', 'charset', 'collate']) {
-            if (tableData[func]) {
-                table[func](tableData[func]);
-            }
+            throw err;
         }
-
-        const promise = table;
 
         if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(ret => {callback(null, ret)});
+            setImmediate(() => callback(err));
         }
-
-        return promise;
     }
 
     /**
      * Manually create the indexes from a table description object.
      * @param {Object} db A knex instance
-     * @param {String} tableName The name of the table to create
+     * @param {string} tableName The name of the table to create
      * @param {TableDescription} tableData The table data
      * @param {boolean} [ignoreExistsError=false] Ignore "exists" error for single index creation, can be used to continue a failed install
      * @param {function(error:?)?} callback - optional callback
-     * @returns {Promise<void>|*}
+     * @returns {Promise<void>}
      */
-    static createTableIndexes(db, tableName, tableData, ignoreExistsError, callback) {
+    static async createTableIndexes(db, tableName, tableData, ignoreExistsError, callback) {
         if (callback === undefined && typeof ignoreExistsError === 'function') {
-          callback = ignoreExistsError;
-          ignoreExistsError = false;
+            callback = ignoreExistsError;
+            ignoreExistsError = false;
         }
 
-        const promise = db.schema
-                          .table(_tablePrefix + tableName, table => {
-                              for (const index of (tableData['indexes'] || [])) {
-                                  KnexSchemaBuilder._createIndexInner(table, index);
-                              }
-                          })
-                          .catch(defaultErrorHandler(ignoreExistsError))
-                          .then(() => undefined);
+        try {
+            await db.schema
+                .table(_tablePrefix + tableName, table => {
+                    for (const index of (tableData['indexes'] || [])) {
+                        KnexSchemaBuilder._createIndexInner(table, index);
+                    }
+                })
+                .catch(defaultErrorHandler(ignoreExistsError))
+                .then(() => undefined);
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
+            }
+            throw err;
+        }
 
         if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(() => {callback(null)});
+            setImmediate(() => callback(null));
         }
-
-        return promise;
     }
 
     /**
      * Manually create an index
      * @param {Object} db A knex instance
-     * @param {String} tableName The name of the table to create
+     * @param {string} tableName The name of the table to create
      * @param {TableIndexDescription} indexData The index data
      * @param {function(error:?)?} callback - optional callback
-     * @returns {Promise<void>|*}
+     * @returns {Promise<void>}
      */
-    static createIndex(db, tableName, indexData, callback) {
-
-        const promise = db.schema
-                          .table(_tablePrefix + tableName, table => {
-                              KnexSchemaBuilder._createIndexInner(table, indexData);
-                          })
-                          .then(() => undefined);
-
-        if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(() => {callback(null)});
+    static async createIndex(db, tableName, indexData, callback) {
+        try {
+            await db.schema.table(_tablePrefix + tableName, table => {
+                KnexSchemaBuilder._createIndexInner(table, indexData);
+            });
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
+            }
+            throw err;
         }
 
-        return promise;
+        if (typeof callback === 'function') {
+            setImmediate(() => callback(null));
+        }
     }
 
     /**
@@ -924,8 +874,7 @@ module.exports = class KnexSchemaBuilder {
         if (indexData['unique']) {
             // noinspection JSValidateTypes
             table.unique(columns, indexData['name']);
-        }
-        else {
+        } else {
             table.index(columns, indexData['name']);
         }
     }
@@ -933,56 +882,58 @@ module.exports = class KnexSchemaBuilder {
     /**
      * Manually create the foreign keys from a table description object.
      * @param {Object} db A knex instance
-     * @param {String} tableName The name of the table to create
+     * @param {string} tableName The name of the table to create
      * @param {TableDescription} tableData The table data
      * @param {boolean} [ignoreExistsError=false] Ignore "exists" error for single key creation, can be used to continue a failed install
      * @param {function(error:?)?} callback - optional callback
-     * @returns {Promise<void>|*}
+     * @returns {Promise<void>}
      */
-    static createTableForeignKeys(db, tableName, tableData, ignoreExistsError, callback) {
+    static async createTableForeignKeys(db, tableName, tableData, ignoreExistsError, callback) {
         if (callback === undefined && typeof ignoreExistsError === 'function') {
-          callback = ignoreExistsError;
-          ignoreExistsError = false;
+            callback = ignoreExistsError;
+            ignoreExistsError = false;
         }
 
-        const promise = db.schema
-                          .table(_tablePrefix + tableName, table => {
-                              for (const foreignKeyData of (tableData['foreign_keys'] || [])) {
-                                  KnexSchemaBuilder._createForeignInner(table, foreignKeyData);
-                              }
-                          })
-                          .catch(defaultErrorHandler(ignoreExistsError))
-                          .then(() => undefined);
+        try {
+            await db.schema
+                .table(_tablePrefix + tableName, table => {
+                    for (const foreignKeyData of (tableData['foreign_keys'] || [])) {
+                        KnexSchemaBuilder._createForeignInner(table, foreignKeyData);
+                    }
+                })
+                .catch(defaultErrorHandler(ignoreExistsError));
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
+            }
+            throw err;
+        }
 
         if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(() => {callback(null)});
+            setImmediate(() => callback(null));
         }
-
-        return promise;
     }
 
     /**
      * Manually create an foreign key
      * @param {Object} db A knex instance
-     * @param {String} tableName The name of the table to create
+     * @param {string} tableName The name of the table to create
      * @param {TableForeignKeyDescription} foreignKey The foreign key data
      * @param {function(error:?)?} callback - optional callback
-     * @returns {Promise<void>|*}
+     * @returns {Promise<void>}
      */
     static createForeign(db, tableName, foreignKey, callback) {
 
         const promise = db.schema
-                          .table(_tablePrefix + tableName, table => {
-                              KnexSchemaBuilder._createForeignInner(table, foreignKey);
-                          })
-                          .then(() => undefined);
+            .table(_tablePrefix + tableName, table => {
+                KnexSchemaBuilder._createForeignInner(table, foreignKey);
+            })
+            .then(() => undefined);
 
         if (typeof callback === 'function') {
             promise
                 .catch(callback)
-                .then(() => {callback(null)});
+                .then(() => {callback(null);});
         }
 
         return promise;
@@ -1002,8 +953,8 @@ module.exports = class KnexSchemaBuilder {
 
         // noinspection JSUnresolvedFunction
         const foreign = table.foreign(columns)
-                             .references(foreigns)
-                             .inTable(_tablePrefix + foreignKey['foreign_table']);
+            .references(foreigns)
+            .inTable(_tablePrefix + foreignKey['foreign_table']);
 
         if (foreignKey['on_update']) {
             // noinspection JSUnresolvedFunction
@@ -1019,39 +970,40 @@ module.exports = class KnexSchemaBuilder {
     /**
      * Ensures that the schema_globals exists.
      * @param {Object} db A knex instance
-     * @param {function(error:?, created:Boolean)?} callback - optional callback
-     * @returns {Promise<Boolean>|*}
+     * @param {function(error:?, created:boolean)?} callback - optional callback
+     * @returns {Promise<boolean>} - was the schema_globals created just now?
      */
-    static ensureSchemaGlobalsExist(db, callback) {
+    static async ensureSchemaGlobalsExist(db, callback) {
+        try {
+            // noinspection JSUnresolvedFunction
+            let exists = await db.schema.hasTable('schema_globals');
+            if (exists) {
+                if (typeof callback === 'function') {
+                    setImmediate(() => callback(null, false));
+                }
+                return false;
+            }
 
-        // noinspection JSUnresolvedFunction
-        const promise = db.schema
-                          .hasTable('schema_globals')
-                          .then(exists => {
-                              if (exists) {
-                                  return false;
-                              }
-                              else {
-                                  // noinspection JSCheckFunctionSignatures
-                                  return db.schema
-                                           .createTable('schema_globals', table => {
-                                               // noinspection JSUnresolvedFunction
-                                               table.string('key', 64).notNullable().primary();
+            // noinspection JSCheckFunctionSignatures
+            await db.schema.createTable('schema_globals', table => {
+                // noinspection JSUnresolvedFunction
+                table.string('key', 64).notNullable().primary();
 
-                                               // noinspection JSUnresolvedFunction
-                                               table.string('value', 255);
-                                           })
-                                           .then(() => true);
-                              }
-                          });
+                // noinspection JSUnresolvedFunction
+                table.string('value', 255);
+            });
 
-        if (typeof callback === 'function') {
-            promise
-                .catch(callback)
-                .then(ret => {callback(null, ret)});
+            if (typeof callback === 'function') {
+                setImmediate(() => callback(null, true));
+            }
+        } catch (err) {
+            if (typeof callback === 'function') {
+                return setImmediate(() => callback(err));
+            }
+            throw err;
         }
 
-        return promise;
+        return true;
     }
 
     // noinspection JSUnusedGlobalSymbols
