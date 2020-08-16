@@ -21,6 +21,9 @@
     "sqlite",
     "sqlite3"
   ],
+  "engines": {
+    "node": ">=8"
+  },
   "author": "Daniel Cohen Gindi <danielgindi@gmail.com> (https://github.com/danielgindi)",
   "license": "MIT",
   "bugs": {
@@ -28,8 +31,7 @@
   },
   "homepage": "https://github.com/danielgindi/knex-schema-builder",
   "dependencies": {
-    "strip-json-comments": "3.0.1",
-    "util.promisify": "^1.0.1"
+    "strip-json-comments": "3.1.1"
   },
   "peerDependencies": {
     "knex": "*"

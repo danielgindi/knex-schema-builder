@@ -3,7 +3,7 @@
 const Path = require('path');
 const Fs = require('fs');
 const stripJsonComments = require('strip-json-comments');
-const promisify = require('util.promisify');
+const promisify = require('util').promisify;
 
 let _tablePrefix = '';
 
