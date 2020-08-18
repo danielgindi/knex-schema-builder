@@ -561,10 +561,12 @@ module.exports = class KnexSchemaBuilder {
      * @returns {Promise<number|null>}
      */
     static async getCurrentDbVersion(db, callback) {
+        
+        let version;
+        
         try {
             await KnexSchemaBuilder.ensureSchemaGlobalsExist(db);
 
-            let version = null;
             let row = await db.select('value')
                 .from('schema_globals')
                 .where('key', _tablePrefix + 'db_version')
