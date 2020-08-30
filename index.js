@@ -535,11 +535,10 @@ module.exports = class KnexSchemaBuilder {
                 }
 
                 saveVersion = latestVersion;
-            } catch (err) {
+            } finally {
                 if (saveVersion !== originalVersion) {
                     await KnexSchemaBuilder.setCurrentDbVersion(db, saveVersion);
                 }
-                throw err;
             }
         } catch (err) {
             if (typeof callback === 'function') {
