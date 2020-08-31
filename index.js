@@ -173,10 +173,12 @@ module.exports = class KnexSchemaBuilder {
             ignoreExistsError = false;
         }
 
+        let version;
+
         try {
             let dbTables = {}, dbRawQueries = [];
 
-            let version = await KnexSchemaBuilder.getLatestDbVersion(schemaPath);
+            version = await KnexSchemaBuilder.getLatestDbVersion(schemaPath);
             let schema = await readJsonFilePromisified(Path.join(schemaPath, 'schema.json'), true);
 
             if (schema['schema'] && !Array.isArray(schema['schema']['columns'])) {
