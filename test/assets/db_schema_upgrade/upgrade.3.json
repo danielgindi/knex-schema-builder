@@ -1,0 +1,4 @@
+[
+  { "action": "createTable", "table": "team" },
+  { "action": "addColumn", "table": "user", "column": "team_id", "ignore_errors": true }
+]
