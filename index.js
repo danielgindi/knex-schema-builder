@@ -564,7 +564,7 @@ module.exports = class KnexSchemaBuilder {
      */
     static async getCurrentDbVersion(db, callback) {
         
-        let version;
+        let version = null;
         
         try {
             await KnexSchemaBuilder.ensureSchemaGlobalsExist(db);
