@@ -6,6 +6,10 @@
   "scripts": {
     "test": "mocha"
   },
+  "files": [
+    "*.js",
+    "backup/**/*.js"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/danielgindi/knex-schema-builder"
