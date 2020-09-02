@@ -1,0 +1,22 @@
+{
+  "schema": {
+    "user": {
+      "columns": [
+        { "name": "id", "type": "bigIncrements", "primary_key": true },
+        { "name": "username", "type": "string", "length": 32 },
+        { "name": "password", "type": "string", "length": 64, "nullable": false },
+        { "name": "is_active", "type": "boolean", "default": true, "nullable": false },
+        { "name": "team_id", "type": "unsigned bigInteger"}
+      ],
+      "indexes": [
+        { "name": "ix_user_username", "columns": "username", "unique": true }
+      ]
+    },
+    "team": {
+      "columns": [
+        { "name": "id", "type": "bigIncrements", "primary_key": true },
+        { "name": "name", "type": "string", "length": 32 }
+      ]
+    }
+  }
+}
